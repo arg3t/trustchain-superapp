@@ -163,6 +163,19 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         binding.btnSend.setOnClickListener {
             qrCodeUtils.startQRScanner(this)
         }
+
+        binding.btnRegister.setOnClickListener {
+            val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
+                ?: throw Error("Could not find public key")
+            val transaction = mapOf("key" to "12345")
+
+            transactionRepository.trustChainCommunity.createProposalBlock(
+                "eurotoken_register",
+                transaction,
+                myPublicKey
+            )
+            Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
+        }
     }
 
     /**
