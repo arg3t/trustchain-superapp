@@ -15,8 +15,12 @@ import androidx.preference.PreferenceManager
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -78,6 +82,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class TrustChainApplication : Application() {
     var isFirstRun: Boolean = false
     lateinit var appLoader: AppLoader
+
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() =
         runBlocking {
@@ -418,6 +424,11 @@ class TrustChainApplication : Application() {
             }
         }
         return firstRun
+    }
+
+    override fun onTerminate() {
+        applicationScope.cancel()
+        super.onTerminate()
     }
 
     companion object {
