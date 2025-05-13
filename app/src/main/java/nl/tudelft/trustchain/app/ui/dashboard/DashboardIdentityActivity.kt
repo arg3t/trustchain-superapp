@@ -8,6 +8,7 @@ import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import nl.tudelft.ipv8.android.keyvault.AndroidCryptoProvider
+import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.app.TrustChainApplication
 import nl.tudelft.trustchain.app.databinding.FragmentDashboardIdentityBinding
@@ -21,7 +22,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
     private val binding by viewBinding(FragmentDashboardIdentityBinding::inflate)
 
     // Define identity types for the first spinner
-    private val identityTypes = listOf("New Regular", "New WebAuthn", "Existing WebAuthn")
+    private val identityTypes = listOf("New Regular", "New WebAuthn")
 
     // Store the list of saved identities
     private val savedIdentities = mutableListOf<Identity>()
@@ -44,7 +45,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
     private fun loadIdentities() {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        val json = prefs.getString(PREF_IDENTITIES, null)
+        val json = prefs.getString(PREF_IDENTITIES, "[]")
 
         val jsonArray = JSONArray(json)
         for (i in 0 until jsonArray.length()) {
@@ -87,7 +88,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
         savedIdentitiesAdapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_item,
-            savedIdentities.map { it.name }
+            listOf("default") + savedIdentities.map { it.name }
         ).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
@@ -97,15 +98,24 @@ class DashboardIdentityActivity : AppCompatActivity() {
         // Handle selection
         binding.currentIdentitySelector.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // Handle identity selection
-                if (savedIdentities.isNotEmpty() && position < savedIdentities.size) {
-                    val selectedIdentity = savedIdentities[position]
-                    // You might want to store the current selection somewhere
+                if (position == 0) {
+                    (application as TrustChainApplication).defaultPrivateKey()
+                    return
+                } else {
+                    val selectedIdentity = savedIdentities[position - 1]
+
+                    if (selectedIdentity.type == IdentityType.REGULAR) {
+                        (application as TrustChainApplication).privateKey =
+                            AndroidCryptoProvider.keyFromPrivateBin(selectedIdentity.data.hexToBytes());
+                    } else {
+                        // TODO: Handle WebAuthn Identities
+                        //(application as TrustChainApplication).privateKey = AndroidCryptoProvider.keyFromPrivateBin(selectedIdentity.data.hexToBytes());
+                    }
                 }
+                (application as TrustChainApplication).initIPv8()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
-                // Optional: handle nothing selected
             }
         }
     }

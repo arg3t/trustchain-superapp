@@ -22,6 +22,8 @@ import nl.tudelft.ipv8.keyvault.PrivateKey
 import nl.tudelft.ipv8.keyvault.PublicKey
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 private val lazySodium = LazySodiumAndroid(SodiumAndroid())
 private const val TAG = "WebAuthnCrypto"
@@ -158,62 +160,61 @@ class WebAuthnCryptoProvider(
         get() = scope ?: internalScope
 
     fun generateKey(): WebAuthnPrivateKey? {
-        // For non-suspending function, we need to use callbacks or blocking approach
-        // Using a synchronized approach to block until we get the result
-        val lock = Object()
+        // Using CountDownLatch to coordinate between threads
+        val latch = CountDownLatch(1)
         var privateKey: WebAuthnPrivateKey? = null
 
         operationScope.launch {
             try {
                 // Generate a random id
                 val id = UUID.randomUUID().toString()
-
                 // Create credential manager
                 val credentialManager = CredentialManager.create(context)
-
                 // Create registration request
                 val request = CreatePublicKeyCredentialRequest(
                     requestJson = createRegistrationRequestJson(id),
                     preferImmediatelyAvailableCredentials = true
                 )
-
                 val result = credentialManager.createCredential(
                     request = request,
                     context = context,
                 )
 
-
-                synchronized(lock) {
-                    try {
-                        val credential = result as PublicKeyCredential
-                        val responseJson = credential.authenticationResponseJson
-
-                        // Extract public key from registration response
-                        val publicKeyBytes = extractPublicKeyFromResponse(responseJson)
-                        val publicKey = keyFromPublicBin(publicKeyBytes)
-
-                        privateKey = WebAuthnPrivateKey(
-                            publicKey = publicKey,
-                            id = id,
-                            context = context
-                        )
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error processing WebAuthn registration response", e)
-                        // Create fallback key if WebAuthn fails
-                        privateKey = null
-                    }
-                    lock.notify()
+                try {
+                    val credential = result as PublicKeyCredential
+                    val responseJson = credential.authenticationResponseJson
+                    // Extract public key from registration response
+                    val publicKeyBytes = extractPublicKeyFromResponse(responseJson)
+                    val publicKey = keyFromPublicBin(publicKeyBytes)
+                    privateKey = WebAuthnPrivateKey(
+                        publicKey = publicKey,
+                        id = id,
+                        context = context
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing WebAuthn registration response", e)
+                    privateKey = null
+                } finally {
+                    // Signal completion regardless of outcome
+                    latch.countDown()
                 }
             } catch (e: Exception) {
-                synchronized(lock) {
-                    Log.e(TAG, "Error during WebAuthn registration", e)
-                    // Create fallback key if WebAuthn fails
-                    privateKey = null
-                    lock.notify()
-                }
-                Log.e(TAG, "Error initiating WebAuthn registration", e)
+                Log.e(TAG, "Error during WebAuthn registration", e)
                 privateKey = null
+                // Signal completion in case of error
+                latch.countDown()
             }
+        }
+
+        // Wait for the coroutine to complete with a timeout
+        try {
+            if (!latch.await(60, TimeUnit.SECONDS)) {
+                Log.e(TAG, "Timeout waiting for WebAuthn registration")
+                return null
+            }
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "Interrupted while waiting for WebAuthn registration", e)
+            return null
         }
 
         return privateKey

@@ -64,7 +64,7 @@ android {
 
     composeOptions {
         kotlinCompilerVersion kotlin_version
-        kotlinCompilerExtensionVersion "1.5.9"
+        kotlinCompilerExtensionVersion "1.5.11"
     }
 
     namespace 'nl.tudelft.trustchain.musicdao'

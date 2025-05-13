@@ -100,6 +100,32 @@ class TrustChainApplication : Application() {
             }
         }
 
+    private var _privateKey: PrivateKey? = null
+
+    fun defaultPrivateKey() {_privateKey = null}
+
+    var privateKey: PrivateKey
+        get() {
+            _privateKey?.let { return it }
+
+            // Load a key from the shared preferences
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val privateKey = prefs.getString(PREF_PRIVATE_KEY, null)
+            return if (privateKey == null) {
+                // Generate a new key on the first launch
+                val newKey = AndroidCryptoProvider.generateKey()
+                prefs.edit()
+                    .putString(PREF_PRIVATE_KEY, newKey.keyToBin().toHex())
+                    .apply()
+                newKey
+            } else {
+                AndroidCryptoProvider.keyFromPrivateBin(privateKey.hexToBytes())
+            }
+        }
+        set(value) {
+            _privateKey = value
+        }
+
     fun initIPv8() {
         val config =
             IPv8Configuration(
@@ -125,7 +151,7 @@ class TrustChainApplication : Application() {
 
         IPv8Android.Factory(this)
             .setConfiguration(config)
-            .setPrivateKey(getPrivateKey())
+            .setPrivateKey(privateKey)
             .setServiceClass(TrustChainService::class.java)
             .init()
 
@@ -386,22 +412,6 @@ class TrustChainApplication : Application() {
             newKey
         } else {
             BonehPrivateKey.deserialize(privateKey.hexToBytes())!!
-        }
-    }
-
-    private fun getPrivateKey(): PrivateKey {
-        // Load a key from the shared preferences
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val privateKey = prefs.getString(PREF_PRIVATE_KEY, null)
-        return if (privateKey == null) {
-            // Generate a new key on the first launch
-            val newKey = AndroidCryptoProvider.generateKey()
-            prefs.edit()
-                .putString(PREF_PRIVATE_KEY, newKey.keyToBin().toHex())
-                .apply()
-            newKey
-        } else {
-            AndroidCryptoProvider.keyFromPrivateBin(privateKey.hexToBytes())
         }
     }
 
