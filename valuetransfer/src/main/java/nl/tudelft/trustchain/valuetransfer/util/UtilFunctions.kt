@@ -295,7 +295,7 @@ fun String.getInitials(): String {
     val initials = StringBuilder()
     this.split(" ").forEach {
         @Suppress("DEPRECATION")
-        if (it.isNotEmpty()) initials.append("${it[0].toUpperCase()}.")
+        if (it.isNotEmpty()) initials.append("${it[0].uppercaseChar()}.")
     }
     return initials.toString()
 }

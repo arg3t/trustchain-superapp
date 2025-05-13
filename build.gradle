@@ -11,7 +11,7 @@ buildscript {
     ext.lifecycle_version = "2.5.1"
     ext.jlibtorrent_version = '1.2.17.0'
     ext.dokka_version = "0.10.1"
-    ext.dagger_version = '2.50'
+    ext.dagger_version = '2.56'
     ext.room_version = '2.6.1'
     ext.mockk_version = '1.13.9'
     ext.material_version = '1.7.0'
@@ -41,6 +41,11 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-serialization:$kotlin_version"
     }
 }
+
+plugins {
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.0-Beta2"
+}
+
 
 allprojects {
     repositories {

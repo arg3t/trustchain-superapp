@@ -66,8 +66,6 @@ import nl.tudelft.trustchain.currencyii.CoinCommunity
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.db.TrustStore
 import nl.tudelft.trustchain.foc.community.FOCCommunity
-import nl.tudelft.trustchain.musicdao.core.dao.DaoCommunity
-import nl.tudelft.trustchain.musicdao.core.ipv8.MusicCommunity
 import nl.tudelft.trustchain.offlineeuro.community.OfflineEuroCommunity
 import nl.tudelft.trustchain.valuetransfer.community.IdentityCommunity
 import nl.tudelft.trustchain.valuetransfer.community.PeerChatCommunity
@@ -141,8 +139,6 @@ class TrustChainApplication : Application() {
                         createWalletCommunity(),
                         createMarketCommunity(),
                         createCoinCommunity(),
-                        createDaoCommunity(),
-                        createMusicCommunity(),
                         createIdentityCommunity(),
                         createFOCCommunity(),
                     ),
@@ -306,7 +302,7 @@ class TrustChainApplication : Application() {
     private fun createOfflineEuroCommunity(): OverlayConfiguration<OfflineEuroCommunity> {
         val settings = TrustChainSettings()
         // TODO: Re-concile this community with Reccomender Community
-        val driver = AndroidSqliteDriver(Database.Schema, this, "music-private.db")
+        val driver = AndroidSqliteDriver(Database.Schema, this, "offlineeuro-private.db")
         val store = TrustChainSQLiteStore(Database(driver))
         val randomWalk = RandomWalk.Factory()
         return OverlayConfiguration(
@@ -356,16 +352,6 @@ class TrustChainApplication : Application() {
         )
     }
 
-    private fun createDaoCommunity(): OverlayConfiguration<DaoCommunity> {
-        val randomWalk = RandomWalk.Factory()
-        val nsd = NetworkServiceDiscovery.Factory(getSystemService()!!)
-
-        return OverlayConfiguration(
-            Overlay.Factory(DaoCommunity::class.java),
-            listOf(randomWalk, nsd)
-        )
-    }
-
     private fun createCoinCommunity(): OverlayConfiguration<CoinCommunity> {
         val randomWalk = RandomWalk.Factory()
         val nsd = NetworkServiceDiscovery.Factory(getSystemService()!!)
@@ -373,18 +359,6 @@ class TrustChainApplication : Application() {
         return OverlayConfiguration(
             Overlay.Factory(CoinCommunity::class.java),
             listOf(randomWalk, nsd)
-        )
-    }
-
-    private fun createMusicCommunity(): OverlayConfiguration<MusicCommunity> {
-        val settings = TrustChainSettings()
-        // TODO: Re-concile this community with Reccomender Community
-        val driver = AndroidSqliteDriver(Database.Schema, this, "music-private.db")
-        val store = TrustChainSQLiteStore(Database(driver))
-        val randomWalk = RandomWalk.Factory()
-        return OverlayConfiguration(
-            MusicCommunity.Factory(settings, store),
-            listOf(randomWalk)
         )
     }
 

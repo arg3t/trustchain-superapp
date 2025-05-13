@@ -152,7 +152,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
     }
 
     private fun generateWebAuthnKey(): String {
-        val provider = WebAuthnCryptoProvider(context = applicationContext, scope = (application as TrustChainApplication).applicationScope)
+        val provider = WebAuthnCryptoProvider(context = this, scope = (application as TrustChainApplication).applicationScope)
         val sk = provider.generateKey()!!
         val keymap = mapOf("id" to sk.id, "pub" to sk.pub().keyToBin())
         return JSONObject(keymap).toString();
