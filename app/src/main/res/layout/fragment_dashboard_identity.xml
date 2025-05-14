@@ -5,9 +5,6 @@
               android:id="@+id/dashboard_identity_activity"
               android:padding="16dp"
               android:orientation="vertical">
-    <Spinner
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:id="@+id/new_identity_type_picker" android:layout_marginBottom="16dp"/>
     <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_marginBottom="16dp"
@@ -20,7 +17,7 @@
                 android:hint="Identity Name"/>
     </com.google.android.material.textfield.TextInputLayout>
     <Button
-            android:text="Save Identity"
+            android:text="Create New Identity"
             android:layout_marginBottom="16dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" android:id="@+id/save_id_btn"/>
@@ -33,4 +30,12 @@
             android:text="Choose Identity"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" android:id="@+id/select_identity"/>
+    <Button
+            android:text="Delete All Identities"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/clear_identities"/>
+    <Button
+            android:text="Test Signature"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/test_signature"/>
 </LinearLayout>

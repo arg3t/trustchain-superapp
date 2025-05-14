@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.getSystemService
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -46,6 +47,7 @@ import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
 import nl.tudelft.ipv8.attestation.wallet.AttestationCommunity
 import nl.tudelft.ipv8.attestation.wallet.AttestationSQLiteStore
 import nl.tudelft.ipv8.attestation.wallet.cryptography.bonehexact.BonehPrivateKey
+import nl.tudelft.ipv8.keyvault.IdentityProviderOwner
 import nl.tudelft.ipv8.keyvault.PrivateKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.messaging.tftp.TFTPCommunity
@@ -57,6 +59,7 @@ import nl.tudelft.ipv8.sqldelight.Database
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.app.service.TrustChainService
+import nl.tudelft.trustchain.app.ui.dashboard.DashboardIdentityActivity
 import nl.tudelft.trustchain.common.DemoCommunity
 import nl.tudelft.trustchain.common.MarketCommunity
 import nl.tudelft.trustchain.common.bitcoin.WalletService
@@ -71,8 +74,11 @@ import nl.tudelft.trustchain.valuetransfer.community.IdentityCommunity
 import nl.tudelft.trustchain.valuetransfer.community.PeerChatCommunity
 import nl.tudelft.trustchain.valuetransfer.db.IdentityStore
 import nl.tudelft.trustchain.valuetransfer.util.PeerChatStore
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+const val TAG: String = "TrustChainApplication";
 
 @OptIn(DelicateCoroutinesApi::class)
 @ExperimentalUnsignedTypes
@@ -98,33 +104,20 @@ class TrustChainApplication : Application() {
             }
         }
 
-    private var _privateKey: PrivateKey? = null
-
-    fun defaultPrivateKey() {_privateKey = null}
-
-    var privateKey: PrivateKey
-        get() {
-            _privateKey?.let { return it }
-
-            // Load a key from the shared preferences
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-            val privateKey = prefs.getString(PREF_PRIVATE_KEY, null)
-            return if (privateKey == null) {
-                // Generate a new key on the first launch
-                val newKey = AndroidCryptoProvider.generateKey()
-                prefs.edit()
-                    .putString(PREF_PRIVATE_KEY, newKey.keyToBin().toHex())
-                    .apply()
-                newKey
-            } else {
-                AndroidCryptoProvider.keyFromPrivateBin(privateKey.hexToBytes())
-            }
-        }
-        set(value) {
-            _privateKey = value
-        }
+    var privateKey: PrivateKey? = null
+    var identityProvider: IdentityProviderOwner? = null
 
     fun initIPv8() {
+        if (privateKey == null) {
+            val identities = DashboardIdentityActivity.savedIdentities(this)
+            if(identities.isEmpty()) {
+                Toast.makeText(this, "You must select an identity first!", Toast.LENGTH_LONG).show()
+                return;
+            }
+            privateKey = identities.first().privateKey
+            identityProvider = identities.first().identity
+        }
+
         val config =
             IPv8Configuration(
                 overlays =
@@ -147,7 +140,8 @@ class TrustChainApplication : Application() {
 
         IPv8Android.Factory(this)
             .setConfiguration(config)
-            .setPrivateKey(privateKey)
+            .setPrivateKey(privateKey!!)
+            .setIdentityProvider(identityProvider!!)
             .setServiceClass(TrustChainService::class.java)
             .init()
 

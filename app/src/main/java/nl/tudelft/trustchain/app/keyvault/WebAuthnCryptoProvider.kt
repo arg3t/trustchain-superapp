@@ -1,6 +1,8 @@
 package nl.tudelft.trustchain.app.keyvault
 
 import android.content.Context
+import android.security.keystore.UserNotAuthenticatedException
+import android.util.Base64
 import android.util.Log
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
@@ -20,11 +22,13 @@ import kotlinx.coroutines.launch
 import nl.tudelft.ipv8.keyvault.LibNaClPK
 import nl.tudelft.ipv8.keyvault.PrivateKey
 import nl.tudelft.ipv8.keyvault.PublicKey
+import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
+/*
 private val lazySodium = LazySodiumAndroid(SodiumAndroid())
 private const val TAG = "WebAuthnCrypto"
 
@@ -142,136 +146,10 @@ class WebAuthnPrivateKey(
             }],
             "timeout": 60000,
             "userVerification": "preferred",
-            "rpId": "trustchain.tudelft.nl"
+            "rpId": "trustchain.yigit.run"
         }
         """.trimIndent()
     }
 }
 
-class WebAuthnCryptoProvider(
-    private val context: Context, private val scope: CoroutineScope? = null,
-) {
-    private val internalScope by lazy {
-        CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    }
-
-    // Choose the appropriate scope
-    private val operationScope: CoroutineScope
-        get() = scope ?: internalScope
-
-    fun generateKey(): WebAuthnPrivateKey? {
-        // Using CountDownLatch to coordinate between threads
-        val latch = CountDownLatch(1)
-        var privateKey: WebAuthnPrivateKey? = null
-
-        operationScope.launch {
-            try {
-                // Generate a random id
-                val id = UUID.randomUUID().toString()
-                // Create credential manager
-                val credentialManager = CredentialManager.create(context)
-                // Create registration request
-                val request = CreatePublicKeyCredentialRequest(
-                    requestJson = createRegistrationRequestJson(id),
-                    preferImmediatelyAvailableCredentials = true
-                )
-                val result = credentialManager.createCredential(
-                    request = request,
-                    context = context,
-                )
-
-                try {
-                    val credential = result as PublicKeyCredential
-                    val responseJson = credential.authenticationResponseJson
-                    // Extract public key from registration response
-                    val publicKeyBytes = extractPublicKeyFromResponse(responseJson)
-                    val publicKey = keyFromPublicBin(publicKeyBytes)
-                    privateKey = WebAuthnPrivateKey(
-                        publicKey = publicKey,
-                        id = id,
-                        context = context
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing WebAuthn registration response", e)
-                    privateKey = null
-                } finally {
-                    // Signal completion regardless of outcome
-                    latch.countDown()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error during WebAuthn registration", e)
-                privateKey = null
-                // Signal completion in case of error
-                latch.countDown()
-            }
-        }
-
-        // Wait for the coroutine to complete with a timeout
-        try {
-            if (!latch.await(60, TimeUnit.SECONDS)) {
-                Log.e(TAG, "Timeout waiting for WebAuthn registration")
-                return null
-            }
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Interrupted while waiting for WebAuthn registration", e)
-            return null
-        }
-
-        return privateKey
-    }
-
-    fun keyFromPublicBin(bin: ByteArray): PublicKey {
-        return LibNaClPK.fromBin(bin, lazySodium)
-    }
-
-    private fun createRegistrationRequestJson(username: String): String {
-        // Generate a random challenge
-        val challenge = ByteArray(32).apply {
-            java.security.SecureRandom().nextBytes(this)
-        }
-
-        // WebAuthn registration request in JSON format
-        return """
-        {
-            "challenge": "${android.util.Base64.encodeToString(challenge, android.util.Base64.NO_WRAP)}",
-            "rp": {
-                "name": "TrustChain App",
-                "id": "trustchain.tudelft.nl"
-            },
-            "user": {
-                "id": "${android.util.Base64.encodeToString(username.toByteArray(), android.util.Base64.URL_SAFE)}",
-                "name": "$username",
-                "displayName": "TrustChain User"
-            },
-            "pubKeyCredParams": [
-                {
-                    "type": "public-key",
-                    "alg": -7
-                },
-                {
-                    "type": "public-key",
-                    "alg": -257
-                }
-            ],
-            "timeout": 60000,
-            "attestation": "none",
-            "authenticatorSelection": {
-                "authenticatorAttachment": "platform",
-                "requireResidentKey": false,
-                "userVerification": "preferred"
-            }
-        }
-        """.trimIndent()
-    }
-
-    private fun extractPublicKeyFromResponse(responseJson: String): ByteArray {
-        // In a real implementation, you would parse the CBOR-encoded attestation object
-        // to extract the actual EC public key
-        // For simplicity, we're using a placeholder that generates a dummy key
-        Log.d(TAG, "Registration response: $responseJson")
-
-        // Create a deterministic key based on the response JSON
-        val md = MessageDigest.getInstance("SHA-256")
-        return md.digest(responseJson.toByteArray())
-    }
-}
+ */
