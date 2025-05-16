@@ -31,7 +31,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" android:id="@+id/select_identity"/>
     <Button
-            android:text="Delete All Identities"
+            android:text="Delete Identity"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" android:id="@+id/clear_identities"/>
     <Button

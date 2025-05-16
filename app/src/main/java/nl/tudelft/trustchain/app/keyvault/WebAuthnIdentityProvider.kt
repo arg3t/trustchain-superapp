@@ -99,6 +99,7 @@ class WebAuthnIdentityProviderOwner(
                 val credentialManager = CredentialManager.create(context)
 
                 val requestJson = createAssertionRequestJson(data)
+                Log.d(TAG, requestJson)
 
                 val getCredRequest = GetCredentialRequest(
                     listOf(

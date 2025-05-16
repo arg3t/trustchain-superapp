@@ -31,6 +31,8 @@ import java.util.UUID
 
 private const val TAG = "IdentityManager"
 
+private var selectedIdIdx = 0;
+
 class DashboardIdentityActivity : AppCompatActivity() {
     private val binding by viewBinding(FragmentDashboardIdentityBinding::inflate)
 
@@ -50,6 +52,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
         setupDeleteButton()
         setupSelectIdentityButton()
         setupTestSignatureButton()
+
     }
 
     private fun loadIdentities() {
@@ -96,10 +99,16 @@ class DashboardIdentityActivity : AppCompatActivity() {
                 (application as TrustChainApplication).identityProvider = identity.identity
                 (application as TrustChainApplication).initIPv8()
                 selectedIdentity = identity
+                selectedIdIdx = position
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
             }
+        }
+
+        if (selectedIdIdx < savedIdentities.size) {
+            binding.currentIdentitySelector.setSelection(selectedIdIdx)
+            selectedIdentity = savedIdentities[selectedIdIdx]
         }
     }
 
@@ -170,10 +179,39 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
     private fun setupDeleteButton() {
         binding.clearIdentities.setOnClickListener {
-            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-            prefs.edit().putString(PREF_IDENTITIES, "[]").apply()
-            savedIdentities.clear()
-            setupIdentitySelector()
+            if (savedIdentities.isEmpty()) {
+                Toast.makeText(this, "No identities to delete", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selectedPosition = binding.currentIdentitySelector.selectedItemPosition
+            if (selectedPosition != AdapterView.INVALID_POSITION && selectedPosition < savedIdentities.size) {
+                val identityToDelete = savedIdentities[selectedPosition]
+                savedIdentities.removeAt(selectedPosition)
+                saveIdentities()
+
+                // Update the adapter with the new data
+                savedIdentitiesAdapter.clear()
+                savedIdentitiesAdapter.addAll(savedIdentities.map { it.name })
+                savedIdentitiesAdapter.notifyDataSetChanged()
+
+                // Set a new selected identity if available
+                if (savedIdentities.isNotEmpty()) {
+                    val newPosition = if (selectedPosition < savedIdentities.size) selectedPosition else savedIdentities.size - 1
+                    binding.currentIdentitySelector.setSelection(newPosition)
+                    selectedIdentity = savedIdentities[newPosition]
+                    selectedIdIdx = newPosition
+
+                    // Update application with the new identity
+                    (application as TrustChainApplication).privateKey = selectedIdentity!!.privateKey
+                    (application as TrustChainApplication).identityProvider = selectedIdentity!!.identity
+                    (application as TrustChainApplication).initIPv8()
+                } else {
+                    selectedIdentity = null
+                }
+
+                Toast.makeText(this, "Deleted identity: ${identityToDelete.name}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -238,6 +276,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
                 val credential = result as CreatePublicKeyCredentialResponse
                 val responseJson = credential.registrationResponseJson
 
+                Log.d(TAG, responseJson)
                 // Extract public key from registration response
                 val resp = JSONObject(responseJson)
                 val response = resp.getJSONObject("response")
@@ -285,7 +324,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
             "timeout": 60000,
             "authenticatorSelection": {
                 "authenticatorAttachment": "platform",
-                "requireResidentKey": false,
+                "requireResidentKey": true,
                 "userVerification": "preferred"
             },
             "attestation": "none"
