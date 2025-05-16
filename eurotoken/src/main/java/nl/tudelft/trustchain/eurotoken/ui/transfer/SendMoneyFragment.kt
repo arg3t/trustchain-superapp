@@ -157,6 +157,7 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         const val ARG_AMOUNT = "amount"
         const val ARG_PUBLIC_KEY = "pubkey"
         const val ARG_NAME = "name"
+        const val ARG_TOKEN = "my_super_fancy_token"
         const val TRUSTSCORE_AVERAGE_BOUNDARY = 70
         const val TRUSTSCORE_LOW_BOUNDARY = 30
     }
