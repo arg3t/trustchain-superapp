@@ -265,7 +265,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
             val request = CreatePublicKeyCredentialRequest(
                 requestJson = createRegistrationRequestJson(name, id),
-                preferImmediatelyAvailableCredentials = true
+                // preferImmediatelyAvailableCredentials = true
             )
             val result = credentialManager.createCredential(
                 request = request,
@@ -323,8 +323,8 @@ class DashboardIdentityActivity : AppCompatActivity() {
             ],
             "timeout": 60000,
             "authenticatorSelection": {
-                "authenticatorAttachment": "platform",
-                "requireResidentKey": true,
+                "residentKey": "preferred",
+                "requireResidentKey": false,
                 "userVerification": "preferred"
             },
             "attestation": "none"
