@@ -17,6 +17,8 @@ import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import nl.tudelft.ipv8.Peer
+import nl.tudelft.ipv8.attestation.trustchain.BlockListener
+import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
@@ -169,11 +171,23 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 ?: throw Error("Could not find public key")
             val transaction = mapOf("key" to "12345")
 
-            transactionRepository.trustChainCommunity.createProposalBlock(
+            val block = transactionRepository.trustChainCommunity.createProposalBlock(
                 "eurotoken_register",
                 transaction,
                 myPublicKey
             )
+            transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
+                Log.d("ToonsStuff", "Sending to peer: " + peer.address)
+                transactionRepository.trustChainCommunity.sendBlock(block, peer)
+            }
+            transactionRepository.trustChainCommunity.addListener("eurotoken_register",
+                object : BlockListener {
+                    override fun onBlockReceived(block: TrustChainBlock) {
+                        Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
+                    }
+                }
+            )
+            Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
             Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
         }
     }
