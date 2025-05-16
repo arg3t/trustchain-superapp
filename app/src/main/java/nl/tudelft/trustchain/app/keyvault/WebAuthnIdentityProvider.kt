@@ -34,21 +34,6 @@ class WebAuthnIdentityProviderChecker (
     override val id: String,
     val publicKey: ByteArray
 ): IdentityProviderChecker {
-    override fun verify(signature: IPSignature): Boolean {
-        return true
-    }
-
-    override fun toHexString(): String {
-        return publicKey.toHex()
-    }
-}
-
-
-class WebAuthnIdentityProviderOwner(
-    override val id: String,
-    val publicKey: ByteArray,
-    val context: Context? = null
-) : IdentityProviderOwner {
 
     override fun verify(signature: IPSignature): Boolean {
         return try {
@@ -82,6 +67,26 @@ class WebAuthnIdentityProviderOwner(
             Log.e(TAG, "Error verifying WebAuthn signature", e)
             false
         }
+    }
+
+    override fun toHexString(): String {
+        return publicKey.toHex()
+    }
+}
+
+
+class WebAuthnIdentityProviderOwner(
+    override val id: String,
+    val publicKey: ByteArray,
+    val context: Context? = null,
+    private val checker: WebAuthnIdentityProviderChecker
+) : IdentityProviderOwner {
+
+    constructor(id: String, publicKey: ByteArray, context: Context? = null) :
+        this(id, publicKey, context, WebAuthnIdentityProviderChecker(id, publicKey))
+
+    override fun verify(signature: IPSignature): Boolean {
+        return checker.verify(signature)
     }
 
     override fun toHexString(): String {
