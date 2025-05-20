@@ -25,12 +25,20 @@ import org.bitcoinj.wallet.SendRequest
 import nl.tudelft.trustchain.common.util.TrustChainHelper
 import java.lang.Math.abs
 import java.math.BigInteger
+import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
+import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
     val gatewayStore: GatewayStore
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var webAuthnIdentityProvider: WebAuthnIdentityProviderOwner? = null
+
+    fun setWebAuthnIdentityProvider(provider: WebAuthnIdentityProviderOwner?) {
+        this.webAuthnIdentityProvider = provider
+    }
 
     fun getGatewayPeer(): Peer? {
         return gatewayStore.getPreferred().getOrNull(0)?.peer
@@ -279,15 +287,41 @@ class TransactionRepository(
             return null
         }
         val transaction =
-            mapOf(
+            mutableMapOf<String, Any>(
                 KEY_AMOUNT to BigInteger.valueOf(amount),
                 KEY_BALANCE to (BigInteger.valueOf(getMyBalance() - amount).toLong())
             )
+
+        // Add WebAuthn signature if available
+        webAuthnIdentityProvider?.let { provider ->
+            // Create serialized transaction data to be signed
+            val transactionData = "$amount:${getMyBalance() - amount}".toByteArray()
+
+            // Sign transaction data with WebAuthn
+            val signature = runBlocking {
+                provider.sign(transactionData)
+            }
+
+            if (signature != null) {
+                // Add WebAuthn public key and signature to transaction
+                transaction[WebAuthnValidator.KEY_WEBAUTHN_PUBLIC_KEY] = provider.publicKey
+                transaction[WebAuthnValidator.KEY_WEBAUTHN_SIGNATURE] = WebAuthnSignature(
+                    signature = signature,
+                    publicKey = provider.publicKey
+                )
+                Log.d("WebAuthnTransaction", "Added WebAuthn signature to transaction")
+            } else {
+                Log.e("WebAuthnTransaction", "Failed to create WebAuthn signature")
+            }
+        }
+
+
         return trustChainCommunity.createProposalBlock(
             BLOCK_TYPE_TRANSFER,
             transaction,
             recipient
         )
+
     }
 
     fun verifyBalanceAvailable(
@@ -1221,6 +1255,13 @@ class TransactionRepository(
         addCheckpointListeners()
         addRollbackListeners()
         addTradeListeners()
+
+        // Register WebAuthn validator for all eurotoken transaction types
+        val webAuthnValidator = WebAuthnValidator(this)
+        EUROTOKEN_TYPES.forEach { type ->
+            trustChainCommunity.registerTransactionValidator(type, webAuthnValidator)
+        }
+
     }
 
     companion object {
