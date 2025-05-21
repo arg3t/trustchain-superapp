@@ -55,9 +55,16 @@ android {
     signingConfigs {
         release {
             keyAlias "trustchain"
-            keyPassword "N/A"
+            keyPassword "ageoftrust"
             storeFile file("build.keystore")
-            storePassword "N/A"
+            storePassword "ageoftrust"
+        }
+
+        debug {
+            keyAlias "trustchain_debug"
+            keyPassword "ageoftrust"
+            storeFile file("build.keystore")
+            storePassword "ageoftrust"
         }
     }
 
