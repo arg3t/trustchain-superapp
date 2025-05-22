@@ -1,7 +1,6 @@
 package nl.tudelft.trustchain.eurotoken.ui.transfer
 
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController

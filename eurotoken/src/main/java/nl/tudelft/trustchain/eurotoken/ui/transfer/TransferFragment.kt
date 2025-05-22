@@ -3,7 +3,6 @@ package nl.tudelft.trustchain.eurotoken.ui.transfer
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -13,11 +12,14 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
@@ -34,23 +36,12 @@ import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentTransferEuroBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
-import org.json.JSONException
-import org.json.JSONObject
-import androidx.core.net.toUri
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import okhttp3.internal.wait
-import java.io.IOException
+import org.json.JSONException
+import org.json.JSONObject
 
 class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) {
     private val binding by viewBinding(FragmentTransferEuroBinding::bind)
@@ -169,49 +160,6 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 connectionData.put("name", contact?.name ?: "")
                 connectionData.put("type", "transfer")
 
-                Log.d("ToonsStuff", "Opening EUDI app")
-
-                lifecycleScope.launch {
-                    val content = """
-                        {"type":"vp_token","presentation_definition":{"id":"1b134b0c-d657-4b7c-ab9d-13e7bba0baee","input_descriptors":[{"id":"733a832e-efbd-4f41-98a8-026ea7011407","name":"Person Identification Data (PID)","purpose":"","format":{"vc+sd-jwt":{"sd-jwt_alg_values":["ES256","ES384","ES512"],"kb-jwt_alg_values":["RS256","RS384","RS512","ES256","ES384","ES512"]}},"constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"urn:eu.europa.ec.eudi:pid:1"}},{"path":["$.family_name"],"intent_to_retain":false},{"path":["$.given_name"],"intent_to_retain":false},{"path":["$.birthdate"],"intent_to_retain":false},{"path":["$.age_equal_or_over.18"],"intent_to_retain":false},{"path":["$.age_in_years"],"intent_to_retain":false},{"path":["$.age_birth_year"],"intent_to_retain":false},{"path":["$.birth_family_name"],"intent_to_retain":false},{"path":["$.birth_given_name"],"intent_to_retain":false},{"path":["$.place_of_birth.locality"],"intent_to_retain":false},{"path":["$.address.formatted"],"intent_to_retain":false},{"path":["$.address.country"],"intent_to_retain":false},{"path":["$.address.region"],"intent_to_retain":false},{"path":["$.address.locality"],"intent_to_retain":false},{"path":["$.address.postal_code"],"intent_to_retain":false},{"path":["$.address.street_address"],"intent_to_retain":false},{"path":["$.address.house_number"],"intent_to_retain":false},{"path":["$.sex"],"intent_to_retain":false},{"path":["$.nationalities"],"intent_to_retain":false},{"path":["$.iat"],"intent_to_retain":false},{"path":["$.exp"],"intent_to_retain":false},{"path":["$.issuing_authority"],"intent_to_retain":false},{"path":["$.document_number"],"intent_to_retain":false},{"path":["$.personal_administrative_number"],"intent_to_retain":false},{"path":["$.issuing_country"],"intent_to_retain":false},{"path":["$.issuing_jurisdiction"],"intent_to_retain":false},{"path":["$.portrait"],"intent_to_retain":false},{"path":["$.email_address"],"intent_to_retain":false},{"path":["$.mobile_phone_number"],"intent_to_retain":false}]}}]},"nonce":"5192eb17-1b58-4d75-87c3-cbb4546a6448","request_uri_method":"get"}
-                    """.trimIndent()
-                    val verifierData = makeApiCall("https://verifier-backend.eudiw.dev/ui/presentations", "POST", content) ?: JSONObject() // Unsafe, how to handle null case?
-                    Log.d("ToonsStuff", "Found my cool URL: $verifierData")
-
-                    val transactionId = verifierData.getString("transaction_id")
-                    val clientId = verifierData.getString("client_id")
-                    val requestUri = verifierData.getString("request_uri")
-                    val requestUriMethod = verifierData.getString("request_uri_method")
-
-                    val url = "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
-
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = url.toUri()
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-
-                    Log.d("ToonsStuff", "Starting activity")
-                    startActivity(intent)
-
-                    var waitingForSecrets = true
-                    val getWalletUrl = "https://verifier-backend.eudiw.dev/ui/presentations/$transactionId"
-                    while (waitingForSecrets) {
-                        delay(1000)
-                        val walletResult = makeApiCall(getWalletUrl, "GET", body = null)
-                        if (walletResult != null) {
-                            waitingForSecrets = false
-                            val vpToken = walletResult.getString("vp_token")
-                            Log.d("ToonsStuff", "Received VP token from thingy: $vpToken")
-                        } else {
-                            Log.d("ToonsStuff", "Failed to get wallet results")
-                        }
-                    }
-                }
-
-                // TODO: How to get the result of my activity? Esp since its async!
-                val superFancyToken = "12345"
-                connectionData.put("my_super_fancy_token", superFancyToken)
-
                 val args = Bundle()
 
                 args.putString(RequestMoneyFragment.ARG_DATA, connectionData.toString())
@@ -228,12 +176,12 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
 
         binding.btnRegister.setOnClickListener {
-            val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
-                ?: throw Error("Could not find public key")
-            val eudiToken = "12345" // TODO: Get an actual EUDI token
-            Log.d("ToonsStuff", "EudiToken $eudiToken")
-
             lifecycleScope.launch {
+                val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
+                    ?: throw Error("Could not find public key")
+                val eudiToken = getEudiToken()
+                Log.d("ToonsStuff", "EudiToken $eudiToken")
+
                 val myIdentityProvider: WebAuthnIdentityProviderOwner =
                     (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
                 Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
@@ -270,6 +218,45 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
     }
 
+    suspend fun getEudiToken(): String {
+        Log.d("ToonsStuff", "Opening EUDI app")
+
+        val content = """
+                    {"type":"vp_token","presentation_definition":{"id":"1b134b0c-d657-4b7c-ab9d-13e7bba0baee","input_descriptors":[{"id":"733a832e-efbd-4f41-98a8-026ea7011407","name":"Person Identification Data (PID)","purpose":"","format":{"vc+sd-jwt":{"sd-jwt_alg_values":["ES256","ES384","ES512"],"kb-jwt_alg_values":["RS256","RS384","RS512","ES256","ES384","ES512"]}},"constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"urn:eu.europa.ec.eudi:pid:1"}},{"path":["$.family_name"],"intent_to_retain":false},{"path":["$.given_name"],"intent_to_retain":false},{"path":["$.birthdate"],"intent_to_retain":false},{"path":["$.age_equal_or_over.18"],"intent_to_retain":false},{"path":["$.age_in_years"],"intent_to_retain":false},{"path":["$.age_birth_year"],"intent_to_retain":false},{"path":["$.birth_family_name"],"intent_to_retain":false},{"path":["$.birth_given_name"],"intent_to_retain":false},{"path":["$.place_of_birth.locality"],"intent_to_retain":false},{"path":["$.address.formatted"],"intent_to_retain":false},{"path":["$.address.country"],"intent_to_retain":false},{"path":["$.address.region"],"intent_to_retain":false},{"path":["$.address.locality"],"intent_to_retain":false},{"path":["$.address.postal_code"],"intent_to_retain":false},{"path":["$.address.street_address"],"intent_to_retain":false},{"path":["$.address.house_number"],"intent_to_retain":false},{"path":["$.sex"],"intent_to_retain":false},{"path":["$.nationalities"],"intent_to_retain":false},{"path":["$.iat"],"intent_to_retain":false},{"path":["$.exp"],"intent_to_retain":false},{"path":["$.issuing_authority"],"intent_to_retain":false},{"path":["$.document_number"],"intent_to_retain":false},{"path":["$.personal_administrative_number"],"intent_to_retain":false},{"path":["$.issuing_country"],"intent_to_retain":false},{"path":["$.issuing_jurisdiction"],"intent_to_retain":false},{"path":["$.portrait"],"intent_to_retain":false},{"path":["$.email_address"],"intent_to_retain":false},{"path":["$.mobile_phone_number"],"intent_to_retain":false}]}}]},"nonce":"5192eb17-1b58-4d75-87c3-cbb4546a6448","request_uri_method":"get"}
+                """.trimIndent()
+        val verifierData = makeApiCall("https://verifier-backend.eudiw.dev/ui/presentations", "POST", content) ?: JSONObject() // Unsafe, how to handle null case?
+        Log.d("ToonsStuff", "Found my cool URL: $verifierData")
+
+        val transactionId = verifierData.getString("transaction_id")
+        val clientId = verifierData.getString("client_id")
+        val requestUri = verifierData.getString("request_uri")
+        val requestUriMethod = verifierData.getString("request_uri_method")
+
+        val url = "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = url.toUri()
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+        Log.d("ToonsStuff", "Starting activity")
+        startActivity(intent)
+
+        val getWalletUrl = "https://verifier-backend.eudiw.dev/ui/presentations/$transactionId"
+        // Primitive handling of EUDIW stuff, is there no better way?
+        while (true) {
+            delay(1000)
+            val walletResult = makeApiCall(getWalletUrl, "GET", body = null)
+            if (walletResult != null) {
+                val vpToken = walletResult.getString("vp_token")
+                Log.d("ToonsStuff", "Received VP token from thingy: $vpToken")
+                return vpToken
+            } else {
+                Log.d("ToonsStuff", "Failed to get wallet results")
+            }
+        }
+    }
+
     /**
      * Find a [Peer] in the network by its public key.
      * @param pubKey : The public key of the peer to find.
@@ -300,12 +287,6 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 args.putString(SendMoneyFragment.ARG_PUBLIC_KEY, connectionData.publicKey)
                 args.putLong(SendMoneyFragment.ARG_AMOUNT, connectionData.amount)
                 args.putString(SendMoneyFragment.ARG_NAME, connectionData.name)
-                args.putString(SendMoneyFragment.ARG_TOKEN, connectionData.token)
-
-                Log.d("ToonsStuff", "Scanned a cool QR, with this nice token " + connectionData.token)
-                Toast.makeText(requireContext(), "Token found: " + connectionData.token, Toast.LENGTH_SHORT).show()
-                // TODO: Make a call to `verifier-backend.eudiw.dev/utilities/validations/sdJwtVc`
-                //       to verify this token, also gets us our nice information!
 
                 // Try to send the addresses of the last X transactions to the peer we have just scanned.
                 try {
@@ -379,7 +360,6 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             var amount = this.optLong("amount", -1L)
             var name = this.optString("name")
             var type = this.optString("type")
-            var token = this.optString("my_super_fancy_token")
         }
 
         fun getAmount(amount: String): Long {
