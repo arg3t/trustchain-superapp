@@ -76,11 +76,11 @@ class WebAuthnIdentityProviderChecker (
 class WebAuthnIdentityProviderOwner(
     override val id: String,
     val publicKey: ByteArray,
-    val context: Context? = null,
+    var context: Context, // i made this mutable bc im evil >:)
     private val checker: WebAuthnIdentityProviderChecker
 ) : IdentityProviderOwner {
 
-    constructor(id: String, publicKey: ByteArray, context: Context? = null) :
+    constructor(id: String, publicKey: ByteArray, context: Context) :
         this(id, publicKey, context, WebAuthnIdentityProviderChecker(id, publicKey))
 
     override fun verify(signature: IPSignature): Boolean {
@@ -93,10 +93,6 @@ class WebAuthnIdentityProviderOwner(
 
     @SuppressLint("PublicKeyCredential")
     override suspend fun sign(data: ByteArray): IPSignature? {
-        if (context == null) {
-            throw IllegalStateException("Context is required for WebAuthn signing")
-        }
-
         return withContext(Dispatchers.IO) {
             try {
                 val credentialManager = CredentialManager.create(context)

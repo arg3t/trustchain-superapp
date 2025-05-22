@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
@@ -25,6 +26,7 @@ import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.common.contacts.ContactStore
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
 import nl.tudelft.trustchain.common.util.QRCodeUtils
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 import nl.tudelft.trustchain.common.util.viewBinding
 import nl.tudelft.trustchain.eurotoken.EuroTokenMainActivity
 import nl.tudelft.trustchain.eurotoken.R
@@ -169,26 +171,43 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         binding.btnRegister.setOnClickListener {
             val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
                 ?: throw Error("Could not find public key")
-            val transaction = mapOf("key" to "12345")
+            val eudiToken = "12345" // TODO: Get an actual EUDI token
+            Log.d("ToonsStuff", "EudiToken $eudiToken")
 
-            val block = transactionRepository.trustChainCommunity.createProposalBlock(
-                "eurotoken_register",
-                transaction,
-                myPublicKey
-            )
-            transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
-                Log.d("ToonsStuff", "Sending to peer: " + peer.address)
-                transactionRepository.trustChainCommunity.sendBlock(block, peer)
-            }
-            transactionRepository.trustChainCommunity.addListener("eurotoken_register",
-                object : BlockListener {
-                    override fun onBlockReceived(block: TrustChainBlock) {
-                        Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
-                    }
+            lifecycleScope.launch {
+                val myIdentityProvider: WebAuthnIdentityProviderOwner =
+                    (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+                Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
+                // I don't like this ^ :(
+                // also fixing it will be a bit of a mess but oh well
+
+                myIdentityProvider.context = requireActivity()
+                val signedKey = myIdentityProvider.sign(eudiToken.toByteArray())
+                Log.d("ToonsStuff", "Signed token: $signedKey")
+
+                val transaction = mapOf("signed_EUDI_key" to signedKey?.toJsonString())
+
+                val block = transactionRepository.trustChainCommunity.createProposalBlock(
+                    "eurotoken_register",
+                    transaction,
+                    myPublicKey
+                )
+                transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
+                    Log.d("ToonsStuff", "Sending to peer: " + peer.address)
+                    transactionRepository.trustChainCommunity.sendBlock(block, peer)
                 }
-            )
-            Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
-            Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
+                transactionRepository.trustChainCommunity.addListener(
+                    "eurotoken_register",
+                    object : BlockListener {
+                        override fun onBlockReceived(block: TrustChainBlock) {
+                            Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
+                        }
+                    }
+                )
+                Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
+                Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
+                Toast.makeText(requireActivity(), "Registered on the ⛓\uFE0Fchain\uD83D\uDE80", Toast.LENGTH_LONG).show()
+            }
         }
     }
 

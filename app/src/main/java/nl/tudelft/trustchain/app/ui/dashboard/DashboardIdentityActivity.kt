@@ -14,15 +14,16 @@ import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
+import nl.tudelft.ipv8.android.IPv8Android
 import nl.tudelft.ipv8.android.keyvault.AndroidCryptoProvider
 import nl.tudelft.ipv8.keyvault.IdentityProviderOwner
 import nl.tudelft.ipv8.keyvault.PrivateKey
 import nl.tudelft.ipv8.util.hexToBytes
-import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.app.TrustChainApplication
 import nl.tudelft.trustchain.app.databinding.FragmentDashboardIdentityBinding
-import nl.tudelft.trustchain.app.keyvault.WebAuthnIdentityProviderOwner
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 import nl.tudelft.trustchain.common.util.viewBinding
 import org.json.JSONArray
 import org.json.JSONException
@@ -65,7 +66,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
 
     private fun saveIdentities() {
-        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val jsonArray = JSONArray()
         for (identity in savedIdentities) {
             val obj = JSONObject()
@@ -100,6 +101,8 @@ class DashboardIdentityActivity : AppCompatActivity() {
                 (application as TrustChainApplication).initIPv8()
                 selectedIdentity = identity
                 selectedIdIdx = position
+                IPv8Android.getInstance().myPeer.identityProvider = identity.identity
+                IPv8Android.getInstance().myPeer.key = identity.privateKey
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
