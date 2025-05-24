@@ -43,6 +43,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
 
+
 class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) {
     private val binding by viewBinding(FragmentTransferEuroBinding::bind)
 
@@ -179,7 +180,13 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             lifecycleScope.launch {
                 val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
                     ?: throw Error("Could not find public key")
-                val eudiToken = getEudiToken()
+                 val verifyResult = verifyEudiToken()
+                 if (verifyResult == false) {
+                     Log.d("ToonsStuff", "Failed to verify EUDI token")
+                     Toast.makeText(requireActivity(), "Failed to verify EUDI token", Toast.LENGTH_LONG).show()
+                     return@launch
+                 }
+                val eudiToken = getEudiToken().toString()
                 Log.d("ToonsStuff", "EudiToken $eudiToken")
 
                 val myIdentityProvider: WebAuthnIdentityProviderOwner =
@@ -218,11 +225,67 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
     }
 
-    suspend fun getEudiToken(): String {
+    suspend fun getEudiToken(): JSONObject {
         Log.d("ToonsStuff", "Opening EUDI app")
 
         val content = """
-                    {"type":"vp_token","presentation_definition":{"id":"1b134b0c-d657-4b7c-ab9d-13e7bba0baee","input_descriptors":[{"id":"733a832e-efbd-4f41-98a8-026ea7011407","name":"Person Identification Data (PID)","purpose":"","format":{"vc+sd-jwt":{"sd-jwt_alg_values":["ES256","ES384","ES512"],"kb-jwt_alg_values":["RS256","RS384","RS512","ES256","ES384","ES512"]}},"constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"urn:eu.europa.ec.eudi:pid:1"}},{"path":["$.family_name"],"intent_to_retain":false},{"path":["$.given_name"],"intent_to_retain":false},{"path":["$.birthdate"],"intent_to_retain":false},{"path":["$.age_equal_or_over.18"],"intent_to_retain":false},{"path":["$.age_in_years"],"intent_to_retain":false},{"path":["$.age_birth_year"],"intent_to_retain":false},{"path":["$.birth_family_name"],"intent_to_retain":false},{"path":["$.birth_given_name"],"intent_to_retain":false},{"path":["$.place_of_birth.locality"],"intent_to_retain":false},{"path":["$.address.formatted"],"intent_to_retain":false},{"path":["$.address.country"],"intent_to_retain":false},{"path":["$.address.region"],"intent_to_retain":false},{"path":["$.address.locality"],"intent_to_retain":false},{"path":["$.address.postal_code"],"intent_to_retain":false},{"path":["$.address.street_address"],"intent_to_retain":false},{"path":["$.address.house_number"],"intent_to_retain":false},{"path":["$.sex"],"intent_to_retain":false},{"path":["$.nationalities"],"intent_to_retain":false},{"path":["$.iat"],"intent_to_retain":false},{"path":["$.exp"],"intent_to_retain":false},{"path":["$.issuing_authority"],"intent_to_retain":false},{"path":["$.document_number"],"intent_to_retain":false},{"path":["$.personal_administrative_number"],"intent_to_retain":false},{"path":["$.issuing_country"],"intent_to_retain":false},{"path":["$.issuing_jurisdiction"],"intent_to_retain":false},{"path":["$.portrait"],"intent_to_retain":false},{"path":["$.email_address"],"intent_to_retain":false},{"path":["$.mobile_phone_number"],"intent_to_retain":false}]}}]},"nonce":"5192eb17-1b58-4d75-87c3-cbb4546a6448","request_uri_method":"get"}
+                    {
+                    "type": "vp_token",
+                    "presentation_definition": {
+                        "id": "1e7896b5-bbcc-4730-94b2-8232cfac2658",
+                        "input_descriptors": [
+                        {
+                            "id": "f290d465-3fff-4637-89f1-08f8606ccd7b",
+                            "name": "Person Identification Data (PID)",
+                            "purpose": "",
+                            "format": {
+                            "dc+sd-jwt": {
+                                "sd-jwt_alg_values": [
+                                "ES256",
+                                "ES384",
+                                "ES512"
+                                ],
+                                "kb-jwt_alg_values": [
+                                "RS256",
+                                "RS384",
+                                "RS512",
+                                "ES256",
+                                "ES384",
+                                "ES512"
+                                ]
+                            }
+                            },
+                            "constraints": {
+                            "fields": [
+                                {
+                                "path": [
+                                    "$.vct"
+                                ],
+                                "filter": {
+                                    "type": "string",
+                                    "const": "urn:eu.europa.ec.eudi:pid:1"
+                                }
+                                },
+                                {
+                                "path": [
+                                    "$.family_name"
+                                ],
+                                "intent_to_retain": false
+                                },
+                                {
+                                "path": [
+                                    "$.given_name"
+                                ],
+                                "intent_to_retain": false
+                                }
+                            ]
+                            }
+                        }
+                        ]
+                    },
+                    "nonce": "2418429c-f59f-4b48-99c1-4f4bfaff8116",
+                    "request_uri_method": "get"
+                    }
                 """.trimIndent()
         val verifierData = makeApiCall("https://verifier-backend.eudiw.dev/ui/presentations", "POST", content) ?: JSONObject() // Unsafe, how to handle null case?
         Log.d("ToonsStuff", "Found my cool URL: $verifierData")
@@ -248,12 +311,58 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             delay(1000)
             val walletResult = makeApiCall(getWalletUrl, "GET", body = null)
             if (walletResult != null) {
-                val vpToken = walletResult.getString("vp_token")
+                val vpTokenarray = walletResult.getJSONArray("vp_token")
+                val vpToken = vpTokenarray[0].toString()
                 Log.d("ToonsStuff", "Received VP token from thingy: $vpToken")
-                return vpToken
+                return walletResult
             } else {
                 Log.d("ToonsStuff", "Failed to get wallet results")
             }
+        }
+    }
+
+    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
+        try {
+            Log.d("ToonsStuff", "Starting EUDI token verification")
+
+            val walletResult = token ?: getEudiToken()
+
+            val vpTokenArray = walletResult.getJSONArray("vp_token")
+            val vpTokenString = vpTokenArray.getString(0)
+
+            Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
+
+            val verifyRequestBody = JSONObject().apply {
+                put("sd_jwt_vc", vpTokenString)
+                put("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
+            }.toString()
+
+            val verificationResponse = makeApiCall(
+                "https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc",
+                "POST",
+                verifyRequestBody
+            )
+
+            if (verificationResponse == null) {
+                Log.e("ToonsStuff", "Validation failed - null response")
+                return false
+            }
+
+            val isValid = verificationResponse.optBoolean("valid", false)
+
+            if (isValid) {
+                Log.d("ToonsStuff", "SD-JWT verified successfully by EUDI validator")
+                return true
+            } else {
+                val errorMessage = verificationResponse.optString("error", "Unknown validation error")
+                Log.e("ToonsStuff", "Token validation failed: $errorMessage")
+                return false
+            }
+
+        } catch (e: Exception) {
+            Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+            e.printStackTrace()
+            return false
         }
     }
 

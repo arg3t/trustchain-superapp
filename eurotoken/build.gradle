@@ -92,7 +92,5 @@ dependencies {
     implementation "androidx.navigation:navigation-runtime:$nav_version"
     implementation 'androidx.sqlite:sqlite:2.4.0'
     implementation "app.cash.sqldelight:android-driver:$sqldelight_version"
-
-    // For http calls, doubt this is best practice, is there no android / standard lib type thing?
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

@@ -24,3 +24,13 @@ include ':freedomOfComputing'
 include ':valuetransfer'
 include ':geth-android'
 include ':peerai'
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        google()
+        maven {
+            url "https://maven.pkg.github.com/eu-digital-identity-wallet/eudi-lib-jvm-sdjwt-kt"
+        }
+    }
+}
