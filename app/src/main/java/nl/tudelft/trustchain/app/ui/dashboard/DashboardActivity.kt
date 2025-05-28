@@ -140,17 +140,19 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun onPermissionsDenied() {
+        return; // TODO: Fuck this
         AlertDialog.Builder(this)
             .setMessage(getString(R.string.permissions_denied_message))
             .apply {
                 setPositiveButton(getString(R.string.permissions_denied_ok_button)) { _, _ ->
-                    run {
-                        val intent =
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                        val uri: Uri = Uri.fromParts("package", packageName, null)
-                        intent.data = uri
-                        startActivityForResult(intent, SETTINGS_INTENT_CODE)
-                    }
+                        run {
+                            val intent =
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            val uri: Uri = Uri.fromParts("package", packageName, null)
+                            intent.data = uri
+                            startActivityForResult(intent, SETTINGS_INTENT_CODE)
+                        }
+
                 }.create()
             }
             .show()

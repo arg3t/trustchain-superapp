@@ -5,6 +5,8 @@ import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
 import nl.tudelft.ipv8.attestation.trustchain.store.TrustChainStore
 import nl.tudelft.ipv8.attestation.trustchain.validation.TransactionValidator
 import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
+import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
 import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderChecker
@@ -37,15 +39,15 @@ class WebAuthnValidator(
         }
 
         try {
-            val webAuthnPublicKey = block.transaction[KEY_WEBAUTHN_PUBLIC_KEY] as ByteArray
-            val webAuthnSignature = block.transaction[KEY_WEBAUTHN_SIGNATURE] as WebAuthnSignature
+            val webAuthnPublicKey = block.transaction[KEY_WEBAUTHN_PUBLIC_KEY].toString().hexToBytes()
+            val webAuthnSignature = IPSignature.fromJsonString(block.transaction[KEY_WEBAUTHN_SIGNATURE].toString())
 
             val checker = WebAuthnIdentityProviderChecker(
-                id = webAuthnPublicKey.toString(Charsets.UTF_8),
+                id = "HARDCODED_ID", // TODO: Please for the love of god, changeme
                 publicKey = webAuthnPublicKey
             )
 
-            val isValid = checker.verify(webAuthnSignature.signature)
+            val isValid = checker.verify(webAuthnSignature)
 
             if (!isValid) {
                 Log.e(TAG, "WebAuthn signature verification failed for block ${block.blockId}")

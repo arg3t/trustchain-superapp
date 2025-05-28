@@ -1,6 +1,7 @@
 package nl.tudelft.trustchain.eurotoken.ui.transfer
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -8,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import nl.tudelft.trustchain.common.util.QRCodeUtils
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 import nl.tudelft.trustchain.common.util.viewBinding
 import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentRequestMoneyBinding

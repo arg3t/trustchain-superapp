@@ -72,6 +72,7 @@ open class EurotokenBaseFragment(contentLayoutId: Int = 0) : BaseFragment(conten
 
         lifecycleScope.launchWhenResumed {
         }
+
     }
 
     fun makeMoneyToast() {

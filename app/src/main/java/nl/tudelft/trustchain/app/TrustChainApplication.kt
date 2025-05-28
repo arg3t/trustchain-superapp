@@ -145,6 +145,9 @@ class TrustChainApplication : Application() {
             .setServiceClass(TrustChainService::class.java)
             .init()
 
+        if(identityProvider != null)
+            IPv8Android.getInstance().myPeer.identityProvider = identityProvider
+
         initWallet()
         initTrustChain()
     }

@@ -176,16 +176,29 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             qrCodeUtils.startQRScanner(this)
         }
 
+        Log.d("ToonsStuff", "making listener")
+        transactionRepository.trustChainCommunity.addListener(
+            "eurotoken_transfer",
+            object : BlockListener {
+                override fun onBlockReceived(block: TrustChainBlock) {
+                    Log.d("ToonsStuff", "blockReceived: ${block}")
+                    Log.d("ToonsStuff", "blockReceived: ${block.rawTransaction}")
+                    Log.d("ToonsStuff", "blockReceived: ${block.signature}")
+                }
+            }
+        )
+
         binding.btnRegister.setOnClickListener {
             lifecycleScope.launch {
                 val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
                     ?: throw Error("Could not find public key")
-                 val verifyResult = verifyEudiToken()
+                 /* val verifyResult = verifyEudiToken()
                  if (verifyResult == false) {
                      Log.d("ToonsStuff", "Failed to verify EUDI token")
                      Toast.makeText(requireActivity(), "Failed to verify EUDI token", Toast.LENGTH_LONG).show()
                      return@launch
                  }
+                 */
                 val eudiToken = getEudiToken().toString()
                 Log.d("ToonsStuff", "EudiToken $eudiToken")
 
@@ -210,14 +223,6 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     Log.d("ToonsStuff", "Sending to peer: " + peer.address)
                     transactionRepository.trustChainCommunity.sendBlock(block, peer)
                 }
-                transactionRepository.trustChainCommunity.addListener(
-                    "eurotoken_register",
-                    object : BlockListener {
-                        override fun onBlockReceived(block: TrustChainBlock) {
-                            Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
-                        }
-                    }
-                )
                 Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
                 Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
                 Toast.makeText(requireActivity(), "Registered on the ⛓\uFE0Fchain\uD83D\uDE80", Toast.LENGTH_LONG).show()
@@ -322,46 +327,40 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
     }
 
     suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
-        try {
-            Log.d("ToonsStuff", "Starting EUDI token verification")
+        Log.d("ToonsStuff", "Starting EUDI token verification on $token")
 
-            val walletResult = token ?: getEudiToken()
+        val walletResult = token ?: getEudiToken()
 
-            val vpTokenArray = walletResult.getJSONArray("vp_token")
-            val vpTokenString = vpTokenArray.getString(0)
+        val vpTokenArray = walletResult.getJSONArray("vp_token")
+        val vpTokenString = vpTokenArray.getString(0)
 
-            Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
+        Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
 
-            val verifyRequestBody = JSONObject().apply {
-                put("sd_jwt_vc", vpTokenString)
-                put("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
-            }.toString()
+        val verifyRequestBody = JSONObject().apply {
+            put("sd_jwt_vc", vpTokenString)
+            put("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
+        }.toString()
 
-            val verificationResponse = makeApiCall(
-                "https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc",
-                "POST",
-                verifyRequestBody
-            )
+        val verificationResponse = makeApiCall(
+            "https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc",
+            "POST",
+            verifyRequestBody
+        )
+        Log.d("ToonsStuff", "verification response: $verificationResponse")
 
-            if (verificationResponse == null) {
-                Log.e("ToonsStuff", "Validation failed - null response")
-                return false
-            }
+        if (verificationResponse == null) {
+            Log.e("ToonsStuff", "Validation failed - null response")
+            return false
+        }
 
-            val isValid = verificationResponse.optBoolean("valid", false)
+        val isValid = verificationResponse.optBoolean("valid", false)
 
-            if (isValid) {
-                Log.d("ToonsStuff", "SD-JWT verified successfully by EUDI validator")
-                return true
-            } else {
-                val errorMessage = verificationResponse.optString("error", "Unknown validation error")
-                Log.e("ToonsStuff", "Token validation failed: $errorMessage")
-                return false
-            }
-
-        } catch (e: Exception) {
-            Log.e("ToonsStuff", "Error verifying token: ${e.message}")
-            e.printStackTrace()
+        if (isValid) {
+            Log.d("ToonsStuff", "SD-JWT verified successfully by EUDI validator")
+            return true
+        } else {
+            val errorMessage = verificationResponse.optString("error", "Unknown validation error")
+            Log.e("ToonsStuff", "Token validation failed: $errorMessage")
             return false
         }
     }
@@ -473,7 +472,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
         fun getAmount(amount: String): Long {
             val regex = """[^\d]""".toRegex()
-            if (amount.isEmpty()) {
+            if (regex.replace(amount, "").isEmpty()) {
                 return 0L
             }
             return regex.replace(amount, "").toLong()

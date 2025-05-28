@@ -27,6 +27,7 @@ import java.lang.Math.abs
 import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderChecker
 import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 
 class TransactionRepository(
@@ -300,10 +301,8 @@ class TransactionRepository(
             if (signature != null) {
                 // Add WebAuthn public key and signature to transaction
                 transaction[WebAuthnValidator.KEY_WEBAUTHN_PUBLIC_KEY] = provider.toHexString()
-                transaction[WebAuthnValidator.KEY_WEBAUTHN_SIGNATURE] = WebAuthnSignature(
-                    signature = signature,
-                    publicKey = provider.toHexString().toByteArray()
-                )
+                Log.d("ToonsStuff", "jsonStrong: ${signature.toJsonString()}")
+                transaction[WebAuthnValidator.KEY_WEBAUTHN_SIGNATURE] = signature.toJsonString()
                 Log.d("WebAuthnTransaction", "Added WebAuthn signature to transaction")
             } else {
                 Log.e("WebAuthnTransaction", "Failed to create WebAuthn signature")
