@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import com.mattskala.itemadapter.ItemAdapter
@@ -46,8 +48,16 @@ class DashboardActivity : AppCompatActivity() {
 
         adapter.registerRenderer(
             DashboardItemRenderer {
-                val intent = Intent(this, it.app.activity)
-                startActivity(intent)
+                // If users don't have their identity set, IPv8Android.getInstance() will throw an exception.
+                // Here we prevent users from accidentally making that mistake.
+                try {
+                    IPv8Android.getInstance()
+
+                    val intent = Intent(this, it.app.activity)
+                    startActivity(intent)
+                } catch (_: IllegalStateException) {
+                    Toast.makeText(this, "balls lol ⚽⚽", Toast.LENGTH_SHORT).show()
+                }
             }
         )
 
@@ -61,6 +71,11 @@ class DashboardActivity : AppCompatActivity() {
 
         binding.fab.setOnClickListener {
             val intent = Intent(this, DashboardSelectorActivity::class.java)
+            startActivity(intent)
+        }
+
+        binding.identityFab.setOnClickListener {
+            val intent = Intent(this, DashboardIdentityActivity::class.java)
             startActivity(intent)
         }
     }

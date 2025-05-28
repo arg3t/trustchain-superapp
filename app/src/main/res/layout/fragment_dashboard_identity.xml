@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:id="@+id/dashboard_identity_activity"
+              android:padding="16dp"
+              android:orientation="vertical">
+    <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_marginBottom="16dp"
+            android:layout_height="wrap_content">
+
+        <com.google.android.material.textfield.TextInputEditText
+                android:layout_width="match_parent"
+                android:id="@+id/new_identity_name"
+                android:layout_height="wrap_content"
+                android:hint="Identity Name"/>
+    </com.google.android.material.textfield.TextInputLayout>
+    <Button
+            android:text="Create New Identity"
+            android:layout_marginBottom="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/save_id_btn"/>
+
+    <Spinner
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/current_identity_selector" android:layout_marginBottom="16dp"/>
+
+    <Button
+            android:text="Choose Identity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/select_identity"/>
+    <Button
+            android:text="Delete Identity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/clear_identities"/>
+    <Button
+            android:text="Test Signature"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:id="@+id/test_signature"/>
+</LinearLayout>

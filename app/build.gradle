@@ -45,19 +45,26 @@ android {
     defaultConfig {
         applicationId "nl.tudelft.trustchain"
         minSdkVersion 26
-        compileSdk 34
-        targetSdkVersion 34
+        compileSdk 35
+        targetSdkVersion 35
         versionCode generateVersionCode()
-        versionName "0.3.4"
+        versionName "0.3.4.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
         release {
             keyAlias "trustchain"
-            keyPassword "N/A"
+            keyPassword "ageoftrust"
             storeFile file("build.keystore")
-            storePassword "N/A"
+            storePassword "ageoftrust"
+        }
+
+        debug {
+            keyAlias "trustchain_debug"
+            keyPassword "ageoftrust"
+            storeFile file("build.keystore")
+            storePassword "ageoftrust"
         }
     }
 
@@ -124,7 +131,6 @@ dependencies {
     implementation project(':peerai')
     implementation project(':common')
     implementation project(':currencyii')
-    implementation project(':musicdao')
 
     // AndroidX
     implementation "androidx.datastore:datastore-preferences:1.0.0"
@@ -152,6 +158,7 @@ dependencies {
     implementation('net.java.dev.jna:jna:5.12.1@aar')
 
     implementation "com.github.MattSkala:recyclerview-itemadapter:$recyclerview_adapter_version"
+    implementation 'com.google.android.material:material:1.12.0'
 
     // Testing
     testImplementation "junit:junit:$junit_version"
@@ -163,6 +170,11 @@ dependencies {
 
     // Room
     implementation "androidx.room:room-runtime:$room_version"
+
+    // Crypto
+    implementation "com.goterl:lazysodium-android:5.0.1@aar"
+    implementation "androidx.credentials:credentials:1.6.0-alpha01"
+    implementation "androidx.credentials:credentials-play-services-auth:1.6.0-alpha01"
 
     // Transitive dependencies
     androidTestImplementation 'androidx.test:monitor:1.6.1'
@@ -189,7 +201,6 @@ dependencies {
     implementation project(':ipv8-android')
     kapt 'com.google.dagger:dagger-compiler:2.50'
 }
-
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
     kotlinOptions.freeCompilerArgs += [

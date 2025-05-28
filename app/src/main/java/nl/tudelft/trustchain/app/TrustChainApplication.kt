@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.getSystemService
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -15,8 +16,12 @@ import androidx.preference.PreferenceManager
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -42,6 +47,7 @@ import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
 import nl.tudelft.ipv8.attestation.wallet.AttestationCommunity
 import nl.tudelft.ipv8.attestation.wallet.AttestationSQLiteStore
 import nl.tudelft.ipv8.attestation.wallet.cryptography.bonehexact.BonehPrivateKey
+import nl.tudelft.ipv8.keyvault.IdentityProviderOwner
 import nl.tudelft.ipv8.keyvault.PrivateKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.messaging.tftp.TFTPCommunity
@@ -53,6 +59,7 @@ import nl.tudelft.ipv8.sqldelight.Database
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.app.service.TrustChainService
+import nl.tudelft.trustchain.app.ui.dashboard.DashboardIdentityActivity
 import nl.tudelft.trustchain.common.DemoCommunity
 import nl.tudelft.trustchain.common.MarketCommunity
 import nl.tudelft.trustchain.common.bitcoin.WalletService
@@ -62,15 +69,16 @@ import nl.tudelft.trustchain.currencyii.CoinCommunity
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.db.TrustStore
 import nl.tudelft.trustchain.foc.community.FOCCommunity
-import nl.tudelft.trustchain.musicdao.core.dao.DaoCommunity
-import nl.tudelft.trustchain.musicdao.core.ipv8.MusicCommunity
 import nl.tudelft.trustchain.offlineeuro.community.OfflineEuroCommunity
 import nl.tudelft.trustchain.valuetransfer.community.IdentityCommunity
 import nl.tudelft.trustchain.valuetransfer.community.PeerChatCommunity
 import nl.tudelft.trustchain.valuetransfer.db.IdentityStore
 import nl.tudelft.trustchain.valuetransfer.util.PeerChatStore
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+const val TAG: String = "TrustChainApplication";
 
 @OptIn(DelicateCoroutinesApi::class)
 @ExperimentalUnsignedTypes
@@ -78,6 +86,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class TrustChainApplication : Application() {
     var isFirstRun: Boolean = false
     lateinit var appLoader: AppLoader
+
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() =
         runBlocking {
@@ -94,7 +104,20 @@ class TrustChainApplication : Application() {
             }
         }
 
+    var privateKey: PrivateKey? = null
+    var identityProvider: IdentityProviderOwner? = null
+
     fun initIPv8() {
+        if (privateKey == null) {
+            val identities = DashboardIdentityActivity.savedIdentities(this)
+            if(identities.isEmpty()) {
+                Toast.makeText(this, "You must select an identity first!", Toast.LENGTH_LONG).show()
+                return;
+            }
+            privateKey = identities.first().privateKey
+            identityProvider = identities.first().identity
+        }
+
         val config =
             IPv8Configuration(
                 overlays =
@@ -109,8 +132,6 @@ class TrustChainApplication : Application() {
                         createWalletCommunity(),
                         createMarketCommunity(),
                         createCoinCommunity(),
-                        createDaoCommunity(),
-                        createMusicCommunity(),
                         createIdentityCommunity(),
                         createFOCCommunity(),
                     ),
@@ -119,7 +140,8 @@ class TrustChainApplication : Application() {
 
         IPv8Android.Factory(this)
             .setConfiguration(config)
-            .setPrivateKey(getPrivateKey())
+            .setPrivateKey(privateKey!!)
+            .setIdentityProvider(identityProvider!!)
             .setServiceClass(TrustChainService::class.java)
             .init()
 
@@ -274,7 +296,7 @@ class TrustChainApplication : Application() {
     private fun createOfflineEuroCommunity(): OverlayConfiguration<OfflineEuroCommunity> {
         val settings = TrustChainSettings()
         // TODO: Re-concile this community with Reccomender Community
-        val driver = AndroidSqliteDriver(Database.Schema, this, "music-private.db")
+        val driver = AndroidSqliteDriver(Database.Schema, this, "offlineeuro-private.db")
         val store = TrustChainSQLiteStore(Database(driver))
         val randomWalk = RandomWalk.Factory()
         return OverlayConfiguration(
@@ -324,16 +346,6 @@ class TrustChainApplication : Application() {
         )
     }
 
-    private fun createDaoCommunity(): OverlayConfiguration<DaoCommunity> {
-        val randomWalk = RandomWalk.Factory()
-        val nsd = NetworkServiceDiscovery.Factory(getSystemService()!!)
-
-        return OverlayConfiguration(
-            Overlay.Factory(DaoCommunity::class.java),
-            listOf(randomWalk, nsd)
-        )
-    }
-
     private fun createCoinCommunity(): OverlayConfiguration<CoinCommunity> {
         val randomWalk = RandomWalk.Factory()
         val nsd = NetworkServiceDiscovery.Factory(getSystemService()!!)
@@ -341,18 +353,6 @@ class TrustChainApplication : Application() {
         return OverlayConfiguration(
             Overlay.Factory(CoinCommunity::class.java),
             listOf(randomWalk, nsd)
-        )
-    }
-
-    private fun createMusicCommunity(): OverlayConfiguration<MusicCommunity> {
-        val settings = TrustChainSettings()
-        // TODO: Re-concile this community with Reccomender Community
-        val driver = AndroidSqliteDriver(Database.Schema, this, "music-private.db")
-        val store = TrustChainSQLiteStore(Database(driver))
-        val randomWalk = RandomWalk.Factory()
-        return OverlayConfiguration(
-            MusicCommunity.Factory(settings, store),
-            listOf(randomWalk)
         )
     }
 
@@ -383,22 +383,6 @@ class TrustChainApplication : Application() {
         }
     }
 
-    private fun getPrivateKey(): PrivateKey {
-        // Load a key from the shared preferences
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val privateKey = prefs.getString(PREF_PRIVATE_KEY, null)
-        return if (privateKey == null) {
-            // Generate a new key on the first launch
-            val newKey = AndroidCryptoProvider.generateKey()
-            prefs.edit()
-                .putString(PREF_PRIVATE_KEY, newKey.keyToBin().toHex())
-                .apply()
-            newKey
-        } else {
-            AndroidCryptoProvider.keyFromPrivateBin(privateKey.hexToBytes())
-        }
-    }
-
     private suspend fun checkFirstRun(): Boolean {
         val key =
             booleanPreferencesKey(
@@ -418,6 +402,11 @@ class TrustChainApplication : Application() {
             }
         }
         return firstRun
+    }
+
+    override fun onTerminate() {
+        applicationScope.cancel()
+        super.onTerminate()
     }
 
     companion object {
