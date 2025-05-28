@@ -34,11 +34,6 @@ class TransactionRepository(
     val gatewayStore: GatewayStore
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
-    private var webAuthnIdentityProvider: WebAuthnIdentityProviderOwner? = null
-
-    fun setWebAuthnIdentityProvider(provider: WebAuthnIdentityProviderOwner?) {
-        this.webAuthnIdentityProvider = provider
-    }
 
     fun getGatewayPeer(): Peer? {
         return gatewayStore.getPreferred().getOrNull(0)?.peer
@@ -293,7 +288,7 @@ class TransactionRepository(
             )
 
         // Add WebAuthn signature if available
-        webAuthnIdentityProvider?.let { provider ->
+        IPv8Android.getInstance().myPeer.identityProvider?.let { provider ->
             // Create serialized transaction data to be signed
             val transactionData = "$amount:${getMyBalance() - amount}".toByteArray()
 
@@ -304,10 +299,10 @@ class TransactionRepository(
 
             if (signature != null) {
                 // Add WebAuthn public key and signature to transaction
-                transaction[WebAuthnValidator.KEY_WEBAUTHN_PUBLIC_KEY] = provider.publicKey
+                transaction[WebAuthnValidator.KEY_WEBAUTHN_PUBLIC_KEY] = provider.toHexString()
                 transaction[WebAuthnValidator.KEY_WEBAUTHN_SIGNATURE] = WebAuthnSignature(
                     signature = signature,
-                    publicKey = provider.publicKey
+                    publicKey = provider.toHexString().toByteArray()
                 )
                 Log.d("WebAuthnTransaction", "Added WebAuthn signature to transaction")
             } else {
