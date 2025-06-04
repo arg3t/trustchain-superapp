@@ -10,6 +10,7 @@ import nl.tudelft.ipv8.attestation.trustchain.*
 import nl.tudelft.ipv8.attestation.trustchain.store.TrustChainStore
 import nl.tudelft.ipv8.attestation.trustchain.validation.TransactionValidator
 import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
+import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.PublicKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
@@ -27,13 +28,13 @@ import java.lang.Math.abs
 import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
-import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
     val gatewayStore: GatewayStore
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val trustChainHelper = TrustChainHelper(trustChainCommunity)
 
     fun getGatewayPeer(): Peer? {
         return gatewayStore.getPreferred().getOrNull(0)?.peer
@@ -258,10 +259,26 @@ class TransactionRepository(
         return myBalance
     }
 
+    fun verifyPeerRegistration(
+        recipient: ByteArray
+    ): Boolean {
+        val userRegistrationBlock = getUserRegistrationBlock(recipient) ?: return false
+        val signedKey = userRegistrationBlock.transaction["signed_EUDI_key"] ?: return false
+        val signature = IPSignature.fromJsonString(signedKey.toString()).signature
+        // Verification using EUDI stuff will go here.
+
+        Log.d("ToonsStuff", "Signature to verify: $signature")
+        return true
+    }
+
     fun sendTransferProposal(
         recipient: ByteArray,
         amount: Long
     ): Boolean {
+        // Check if user we want to send money is already registered on the chain.
+        if (!verifyPeerRegistration(recipient)) {
+            return false
+        }
         Log.d("sendTransferProposal", "sending amount: $amount")
         if (getMyBalance() - amount < 0) {
             return false
@@ -558,6 +575,18 @@ class TransactionRepository(
                     getBalanceChangeForBlock(block) < 0,
                     block.timestamp
                 )
+            }
+    }
+
+    fun getUserRegistrationBlock(
+        userKey: ByteArray
+    ): TrustChainBlock? {
+        return trustChainHelper
+            .getChainByUser(trustChainHelper.getMyPublicKey())
+            .reversed()
+            .firstOrNull { block ->
+                block.type == BLOCK_TYPE_REGISTER &&
+                    block.publicKey.contentEquals(userKey)
             }
     }
 
@@ -1281,6 +1310,7 @@ class TransactionRepository(
         const val BLOCK_TYPE_ROLLBACK = "eurotoken_rollback"
         const val BLOCK_TYPE_JOIN = "eurotoken_join"
         const val BLOCK_TYPE_TRADE = "eurotoken_trade"
+        const val BLOCK_TYPE_REGISTER = "eurotoken_register"
 
         @Suppress("ktlint:standard:property-naming")
         val EUROTOKEN_TYPES =
@@ -1291,7 +1321,8 @@ class TransactionRepository(
                 BLOCK_TYPE_CHECKPOINT,
                 BLOCK_TYPE_ROLLBACK,
                 BLOCK_TYPE_JOIN,
-                BLOCK_TYPE_TRADE
+                BLOCK_TYPE_TRADE,
+                BLOCK_TYPE_REGISTER
             )
 
         const val KEY_AMOUNT = "amount"
