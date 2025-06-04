@@ -10,6 +10,7 @@ import nl.tudelft.ipv8.attestation.trustchain.*
 import nl.tudelft.ipv8.attestation.trustchain.store.TrustChainStore
 import nl.tudelft.ipv8.attestation.trustchain.validation.TransactionValidator
 import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
+import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.PublicKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
@@ -261,10 +262,13 @@ class TransactionRepository(
     fun verifyPeerRegistration(
         recipient: ByteArray
     ): Boolean {
-        return getUserRegistrationBlock(recipient)?.let { peerBlock ->
-            // Verification using EUDI stuff will go here.
-            true
-        } ?: false
+        val userRegistrationBlock = getUserRegistrationBlock(recipient) ?: return false
+        val signedKey = userRegistrationBlock.transaction["signed_EUDI_key"] ?: return false
+        val signature = IPSignature.fromJsonString(signedKey.toString()).signature
+        // Verification using EUDI stuff will go here.
+
+        Log.d("ToonsStuff", "Signature to verify: $signature")
+        return true
     }
 
     fun sendTransferProposal(
@@ -579,7 +583,7 @@ class TransactionRepository(
     ): TrustChainBlock? {
         return trustChainHelper
             .getChainByUser(trustChainHelper.getMyPublicKey())
-            .asSequence()
+            .reversed()
             .firstOrNull { block ->
                 block.type == BLOCK_TYPE_REGISTER &&
                     block.publicKey.contentEquals(userKey)
