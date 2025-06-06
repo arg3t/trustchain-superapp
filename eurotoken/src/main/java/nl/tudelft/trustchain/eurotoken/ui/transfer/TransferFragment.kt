@@ -36,6 +36,7 @@ import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentTransferEuroBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -332,35 +333,51 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
             Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
 
-            val verifyRequestBody = JSONObject().apply {
-                put("sd_jwt_vc", vpTokenString)
-                put("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
-            }.toString()
+            val formBody = FormBody.Builder()
+                .add("sd_jwt_vc", vpTokenString)
+                .add("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
+                .build()
 
-            val verificationResponse = makeApiCall(
-                "https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc",
-                "POST",
-                verifyRequestBody
-            )
+            val request = Request.Builder()
+                .url("https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc")
+                .addHeader("Accept-Encoding", "application/json")
+                .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                .post(formBody)
+                .build()
 
-            if (verificationResponse == null) {
-                Log.e("ToonsStuff", "Validation failed - null response")
-                return false
+            return withContext(Dispatchers.IO) {
+                try {
+                    OkHttpClient().newCall(request).execute().use { response ->
+                    val body = response.body?.string() ?: return@use false
+                    val json = JSONObject(body)
+
+                    // top-level fields, not inside "claims"
+                    val givenName = json.optString("given_name", "")
+                    val familyName = json.optString("family_name", "")
+
+                    if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
+                        Log.d("ToonsStuff", "Name: $givenName $familyName")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                requireContext(),
+                                "Verified Name: $givenName $familyName",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        true
+                    } else {
+                        Log.d("ToonsStuff", "No birth name in response")
+                        false
+                    }
+                }
+                } catch (e: Exception) {
+                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+                    e.printStackTrace()
+                    false
+                }
             }
-
-            val isValid = verificationResponse.optBoolean("valid", false)
-
-            if (isValid) {
-                Log.d("ToonsStuff", "SD-JWT verified successfully by EUDI validator")
-                return true
-            } else {
-                val errorMessage = verificationResponse.optString("error", "Unknown validation error")
-                Log.e("ToonsStuff", "Token validation failed: $errorMessage")
-                return false
-            }
-
         } catch (e: Exception) {
-            Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
             e.printStackTrace()
             return false
         }
