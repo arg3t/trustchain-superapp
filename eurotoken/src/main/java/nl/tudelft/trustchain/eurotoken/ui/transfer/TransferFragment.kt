@@ -301,20 +301,16 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
     }
 
-    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
+    suspend fun verifyEudiToken(nonce: String, token: String): Boolean {
         try {
             Log.d("ToonsStuff", "Starting EUDI token verification")
-
-            val walletResult = token ?: getEudiToken()
-
-            val vpTokenArray = walletResult.getJSONArray("vp_token")
-            val vpTokenString = vpTokenArray.getString(0)
+            val vpTokenString = token
 
             Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
 
             val formBody = FormBody.Builder()
                 .add("sd_jwt_vc", vpTokenString)
-                .add("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
+                .add("nonce", nonce)
                 .build()
 
             val request = Request.Builder()
@@ -327,28 +323,28 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             return withContext(Dispatchers.IO) {
                 try {
                     OkHttpClient().newCall(request).execute().use { response ->
-                    val body = response.body?.string() ?: return@use false
-                    val json = JSONObject(body)
+                        val body = response.body?.string() ?: return@use false
+                        val json = JSONObject(body)
 
-                    // top-level fields, not inside "claims"
-                    val givenName = json.optString("given_name", "")
-                    val familyName = json.optString("family_name", "")
+                        // top-level fields, not inside "claims"
+                        val givenName = json.optString("given_name", "")
+                        val familyName = json.optString("family_name", "")
 
-                    if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
-                        Log.d("ToonsStuff", "Name: $givenName $familyName")
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(
-                                requireContext(),
-                                "Verified Name: $givenName $familyName",
-                                Toast.LENGTH_LONG
-                            ).show()
+                        if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
+                            Log.d("ToonsStuff", "Name: $givenName $familyName")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Verified Name: $givenName $familyName",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            true
+                        } else {
+                            Log.d("ToonsStuff", "No birth name in response")
+                            false
                         }
-                        true
-                    } else {
-                        Log.d("ToonsStuff", "No birth name in response")
-                        false
                     }
-                }
                 } catch (e: Exception) {
                     Log.e("ToonsStuff", "Error verifying token: ${e.message}")
                     e.printStackTrace()
