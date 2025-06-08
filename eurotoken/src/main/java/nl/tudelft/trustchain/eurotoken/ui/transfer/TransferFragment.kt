@@ -43,6 +43,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.UUID
 
 
 class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) {
@@ -161,6 +162,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 connectionData.put("amount", amount)
                 connectionData.put("name", contact?.name ?: "")
                 connectionData.put("type", "transfer")
+                connectionData.put("signature", "12345") // TODO: actual signature
 
                 val args = Bundle()
 
@@ -301,67 +303,6 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
     }
 
-    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
-        try {
-            Log.d("ToonsStuff", "Starting EUDI token verification")
-
-            val walletResult = token ?: getEudiToken()
-
-            val vpTokenArray = walletResult.getJSONArray("vp_token")
-            val vpTokenString = vpTokenArray.getString(0)
-
-            Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
-
-            val formBody = FormBody.Builder()
-                .add("sd_jwt_vc", vpTokenString)
-                .add("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
-                .build()
-
-            val request = Request.Builder()
-                .url("https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc")
-                .addHeader("Accept-Encoding", "application/json")
-                .addHeader("Content-Type", "application/x-www-form-urlencoded")
-                .post(formBody)
-                .build()
-
-            return withContext(Dispatchers.IO) {
-                try {
-                    OkHttpClient().newCall(request).execute().use { response ->
-                    val body = response.body?.string() ?: return@use false
-                    val json = JSONObject(body)
-
-                    // top-level fields, not inside "claims"
-                    val givenName = json.optString("given_name", "")
-                    val familyName = json.optString("family_name", "")
-
-                    if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
-                        Log.d("ToonsStuff", "Name: $givenName $familyName")
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(
-                                requireContext(),
-                                "Verified Name: $givenName $familyName",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        true
-                    } else {
-                        Log.d("ToonsStuff", "No birth name in response")
-                        false
-                    }
-                }
-                } catch (e: Exception) {
-                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
-                    e.printStackTrace()
-                    false
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
-            e.printStackTrace()
-            return false
-        }
-    }
-
     /**
      * Find a [Peer] in the network by its public key.
      * @param pubKey : The public key of the peer to find.
@@ -392,6 +333,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 args.putString(SendMoneyFragment.ARG_PUBLIC_KEY, connectionData.publicKey)
                 args.putLong(SendMoneyFragment.ARG_AMOUNT, connectionData.amount)
                 args.putString(SendMoneyFragment.ARG_NAME, connectionData.name)
+                args.putString(SendMoneyFragment.ARG_SIGNATURE, connectionData.signature)
 
                 // Try to send the addresses of the last X transactions to the peer we have just scanned.
                 try {
@@ -465,6 +407,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             var amount = this.optLong("amount", -1L)
             var name = this.optString("name")
             var type = this.optString("type")
+            var signature = this.optString("signature")
         }
 
         fun getAmount(amount: String): Long {

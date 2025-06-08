@@ -267,7 +267,7 @@ class TransactionRepository(
         val signature = IPSignature.fromJsonString(signedKey.toString()).signature
         // Verification using EUDI stuff will go here.
 
-        Log.d("ToonsStuff", "Signature to verify: $signature")
+        Log.d("ToonsStuff", "Signature to verify: ${signature.toHex()}")
         return true
     }
 
