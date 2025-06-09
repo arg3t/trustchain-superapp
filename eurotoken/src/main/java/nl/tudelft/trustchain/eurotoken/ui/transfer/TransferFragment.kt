@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
+import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
@@ -44,6 +45,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.UUID
+import kotlin.collections.get
+import kotlin.math.sign
 
 
 class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) {
@@ -162,7 +165,12 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 connectionData.put("amount", amount)
                 connectionData.put("name", contact?.name ?: "")
                 connectionData.put("type", "transfer")
-                connectionData.put("signature", "12345") // TODO: actual signature
+                val recipient = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin() ?:
+                    throw Error("Problems finding the key")
+                val userRegistrationBlock = transactionRepository.getUserRegistrationBlock(recipient)
+                val signedKey = userRegistrationBlock?.transaction["signed_EUDI_key"]
+                val signature = IPSignature.fromJsonString(signedKey.toString())
+                connectionData.put("signature", signature.toJsonString())
 
                 val args = Bundle()
 
