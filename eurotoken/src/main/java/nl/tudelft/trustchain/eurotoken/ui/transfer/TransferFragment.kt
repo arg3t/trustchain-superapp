@@ -41,8 +41,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.UUID
 
 
 class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) {
@@ -182,7 +184,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
                 ?: throw Error("Could not find public key")
 
-            val nonce = UUID.randomUUID().toString()
+            var nonce = UUID.randomUUID().toString()
             val eudiToken = getEudiToken(nonce).toString()
             Log.d("ToonsStuff", "EudiToken $eudiToken")
 
@@ -235,43 +237,43 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
     suspend fun getEudiToken(nonce: String): JSONObject {
         val presentationRequest = JSONObject().apply {
             put("type", "vp_token")
+            put("nonce", nonce)
+            put("request_uri_method", "get")
             put("presentation_definition", JSONObject().apply {
                 put("id", "1e7896b5-bbcc-4730-94b2-8232cfac2658")
-                put("input_descriptors", listOf(
-                    JSONObject().apply {
+                put("input_descriptors", JSONArray().apply {
+                    put(JSONObject().apply {
                         put("id", "f290d465-3fff-4637-89f1-08f8606ccd7b")
                         put("name", "Person Identification Data (PID)")
                         put("purpose", "")
                         put("format", JSONObject().apply {
                             put("dc+sd-jwt", JSONObject().apply {
-                                put("sd-jwt_alg_values", listOf("ES256", "ES384", "ES512"))
-                                put("kb-jwt_alg_values", listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512"))
+                                put("sd-jwt_alg_values", JSONArray(listOf("ES256", "ES384", "ES512")))
+                                put("kb-jwt_alg_values", JSONArray(listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")))
                             })
                         })
                         put("constraints", JSONObject().apply {
-                            put("fields", listOf(
-                                JSONObject().apply {
-                                    put("path", listOf("$.vct"))
+                            put("fields", JSONArray().apply {
+                                put(JSONObject().apply {
+                                    put("path", JSONArray().apply { put("$.vct") })
                                     put("filter", JSONObject().apply {
                                         put("type", "string")
                                         put("const", "urn:eu.europa.ec.eudi:pid:1")
                                     })
-                                },
-                                JSONObject().apply {
-                                    put("path", listOf("$.family_name"))
+                                })
+                                put(JSONObject().apply {
+                                    put("path", JSONArray().apply { put("$.family_name") })
                                     put("intent_to_retain", false)
-                                },
-                                JSONObject().apply {
-                                    put("path", listOf("$.given_name"))
+                                })
+                                put(JSONObject().apply {
+                                    put("path", JSONArray().apply { put("$.given_name") })
                                     put("intent_to_retain", false)
-                                }
-                            ))
+                                })
+                            })
                         })
-                    }
-                ))
+                    })
+                })
             })
-            put("nonce", nonce)
-            put("request_uri_method", "get")
         }
 
         val verifierData = makeApiCall(
