@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.runBlocking
 import nl.tudelft.ipv8.IPv4Address
+import nl.tudelft.ipv8.IPv8
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.android.IPv8Android
 import nl.tudelft.ipv8.attestation.trustchain.*
@@ -24,10 +25,12 @@ import org.bitcoinj.core.Address
 import org.bitcoinj.core.Coin
 import org.bitcoinj.wallet.SendRequest
 import nl.tudelft.trustchain.common.util.TrustChainHelper
+import nl.tudelft.trustchain.common.util.EUDIUtils
 import java.lang.Math.abs
 import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
@@ -36,8 +39,16 @@ class TransactionRepository(
     private val scope = CoroutineScope(Dispatchers.IO)
     private val trustChainHelper = TrustChainHelper(trustChainCommunity)
 
+    private val eudiUtils by lazy {
+        EUDIUtils()
+    }
+
     fun getGatewayPeer(): Peer? {
         return gatewayStore.getPreferred().getOrNull(0)?.peer
+    }
+
+    private fun getIpv8(): IPv8 {
+        return IPv8Android.getInstance()
     }
 
     private fun getBalanceChangeForBlock(block: TrustChainBlock?): Long {
@@ -259,15 +270,22 @@ class TransactionRepository(
         return myBalance
     }
 
-    fun verifyPeerRegistration(
+    suspend fun verifyPeerRegistration(
         recipient: ByteArray
     ): Boolean {
         val userRegistrationBlock = getUserRegistrationBlock(recipient) ?: return false
         val signedKey = userRegistrationBlock.transaction["signed_EUDI_key"] ?: return false
-        val signature = IPSignature.fromJsonString(signedKey.toString()).signature
-        // Verification using EUDI stuff will go here.
+        val signature = IPSignature.fromJsonString(signedKey.toString())
 
         Log.d("ToonsStuff", "Signature to verify: $signature")
+        val myIdentityProvider: WebAuthnIdentityProviderOwner =
+            (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+
+        if (!myIdentityProvider.verify(signature)) {
+            return false
+        } else {
+            return eudiUtils.verifyEudiToken()
+        }
         return true
     }
 
@@ -275,10 +293,6 @@ class TransactionRepository(
         recipient: ByteArray,
         amount: Long
     ): Boolean {
-        // Check if user we want to send money is already registered on the chain.
-        if (!verifyPeerRegistration(recipient)) {
-            return false
-        }
         Log.d("sendTransferProposal", "sending amount: $amount")
         if (getMyBalance() - amount < 0) {
             return false
