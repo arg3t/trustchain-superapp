@@ -103,13 +103,8 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
 
         lifecycleScope.launch {
             if (!eudiUtils.verifyEudiToken()) {
-                /*
-TODO: Change contents here below. Check if user registered using EUDI, if so display trust message
-        // Check if user we want to send money is already registered on the chain.
-
-                 */
                 binding.trustScoreWarning.text =
-                    getString(R.string.send_money_trustscore_warning_average, trustScore)
+                    getString(R.string.send_money_eudi_warning_failed)
                 binding.trustScoreWarning.setBackgroundColor(
                     ContextCompat.getColor(
                         requireContext(),
