@@ -37,6 +37,11 @@ import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentTransferEuroBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
+import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -180,66 +185,187 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
         binding.btnRegister.setOnClickListener {
             lifecycleScope.launch {
-                val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
-                    ?: throw Error("Could not find public key")
-                 val verifyResult = eudiUtils.verifyEudiToken()
-                 if (verifyResult == false) {
-                     Log.d(TOON_MSG, "Failed to verify EUDI token")
-                     Toast.makeText(requireActivity(), "Failed to verify EUDI token", Toast.LENGTH_LONG).show()
-                     return@launch
-                 }
-                val eudiToken = getEudiToken().toString()
-                Log.d(TOON_MSG, "EudiToken $eudiToken")
+            val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
+                ?: throw Error("Could not find public key")
 
-                val myIdentityProvider: WebAuthnIdentityProviderOwner =
-                    (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
-                Log.d(TOON_MSG, "Identity provider: $myIdentityProvider")
-                // I don't like this ^ :(
-                // also fixing it will be a bit of a mess but oh well
+            val nonce = UUID.randomUUID().toString()
+            val eudiToken = getEudiToken(nonce).toString()
+            Log.d("ToonsStuff", "EudiToken $eudiToken")
 
-                myIdentityProvider.context = requireActivity()
-                val signedKey = myIdentityProvider.sign(eudiToken.toByteArray())
-                Log.d(TOON_MSG, "Signed token: $signedKey")
+            val myIdentityProvider: WebAuthnIdentityProviderOwner =
+                (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+            Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
 
-                val transaction = mapOf("signed_EUDI_key" to signedKey?.toJsonString())
+            myIdentityProvider.context = requireActivity()
+            val signedEudiToken = myIdentityProvider.sign(eudiToken.toByteArray())
+            val signedNonce = myIdentityProvider.sign(nonce.toByteArray())
+            Log.d("ToonsStuff", "Signed EUDI token: $signedEudiToken")
+            Log.d("ToonsStuff", "Signed nonce: $signedNonce")
 
-                val block = transactionRepository.trustChainCommunity.createProposalBlock(
-                    "eurotoken_register",
-                    transaction,
-                    myPublicKey
-                )
-                transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
-                    Log.d(TOON_MSG, "Sending to peer: " + peer.address)
-                    transactionRepository.trustChainCommunity.sendBlock(block, peer)
+            val transaction = mapOf(
+                "signed_EUDI_token" to signedEudiToken?.toJsonString(),
+                "signed_nonce" to signedNonce?.toJsonString()
+            )
+
+            val block = transactionRepository.trustChainCommunity.createProposalBlock(
+                "eurotoken_register",
+                transaction,
+                myPublicKey
+            )
+            transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
+                Log.d("ToonsStuff", "Sending to peer: " + peer.address)
+                transactionRepository.trustChainCommunity.sendBlock(block, peer)
+            }
+            transactionRepository.trustChainCommunity.addListener(
+                "eurotoken_register",
+                object : BlockListener {
+                override fun onBlockReceived(block: TrustChainBlock) {
+                    Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
                 }
-                transactionRepository.trustChainCommunity.addListener(
-                    "eurotoken_register",
-                    object : BlockListener {
-                        override fun onBlockReceived(block: TrustChainBlock) {
-                            Log.d(TOON_MSG, "blockReceived: ${block.blockId} ${block.transaction}")
-                        }
-                    }
-                )
-                Log.d(TOON_MSG, "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
-                Log.d(TOON_MSG, transactionRepository.trustChainCommunity.getChainLength().toString())
-                Toast.makeText(requireActivity(), "Registered on the ⛓\uFE0Fchain\uD83D\uDE80", Toast.LENGTH_LONG).show()
+                }
+            )
+            Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
+            Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
+            Toast.makeText(requireActivity(), "Registered on the ⛓\uFE0Fchain\uD83D\uDE80", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    suspend fun getEudiToken(): JSONObject {
-        val tokenPair = eudiUtils.getEudiToken()
-        val url = tokenPair.second
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = url.toUri()
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    /**
+     * Requests a EUDI VP token from the wallet app using the given nonce.
+     * Launches the wallet app for user interaction and polls for the result.
+     *
+     * @param nonce The nonce to use in the presentation request.
+     * @return JSONObject containing the VP token response.
+     */
+    suspend fun getEudiToken(nonce: String): JSONObject {
+        val presentationRequest = JSONObject().apply {
+            put("type", "vp_token")
+            put("presentation_definition", JSONObject().apply {
+                put("id", "1e7896b5-bbcc-4730-94b2-8232cfac2658")
+                put("input_descriptors", listOf(
+                    JSONObject().apply {
+                        put("id", "f290d465-3fff-4637-89f1-08f8606ccd7b")
+                        put("name", "Person Identification Data (PID)")
+                        put("purpose", "")
+                        put("format", JSONObject().apply {
+                            put("dc+sd-jwt", JSONObject().apply {
+                                put("sd-jwt_alg_values", listOf("ES256", "ES384", "ES512"))
+                                put("kb-jwt_alg_values", listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512"))
+                            })
+                        })
+                        put("constraints", JSONObject().apply {
+                            put("fields", listOf(
+                                JSONObject().apply {
+                                    put("path", listOf("$.vct"))
+                                    put("filter", JSONObject().apply {
+                                        put("type", "string")
+                                        put("const", "urn:eu.europa.ec.eudi:pid:1")
+                                    })
+                                },
+                                JSONObject().apply {
+                                    put("path", listOf("$.family_name"))
+                                    put("intent_to_retain", false)
+                                },
+                                JSONObject().apply {
+                                    put("path", listOf("$.given_name"))
+                                    put("intent_to_retain", false)
+                                }
+                            ))
+                        })
+                    }
+                ))
+            })
+            put("nonce", nonce)
+            put("request_uri_method", "get")
         }
 
-        Log.d(TOON_MSG, "Starting activity")
+        val verifierData = makeApiCall(
+            url = "https://verifier-backend.eudiw.dev/ui/presentations",
+            method = "POST",
+            body = presentationRequest.toString()
+        ) ?: throw Exception("Failed to create presentation request")
+
+        val transactionId = verifierData.getString("transaction_id")
+        val clientId = verifierData.getString("client_id")
+        val requestUri = verifierData.getString("request_uri")
+        val requestUriMethod = verifierData.getString("request_uri_method")
+
+        val walletUrl = "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
+        val intent = Intent(Intent.ACTION_VIEW, walletUrl.toUri()).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
         startActivity(intent)
 
-        return tokenPair.first
+        val pollUrl = "https://verifier-backend.eudiw.dev/ui/presentations/$transactionId"
+        while (true) {
+            delay(1000)
+            val walletResult = makeApiCall(pollUrl, "GET", null)
+            if (walletResult != null && walletResult.has("vp_token")) {
+                return walletResult
+            }
+        }
+    }
+
+    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
+        try {
+            Log.d("ToonsStuff", "Starting EUDI token verification")
+
+            val walletResult = token ?: getEudiToken()
+
+            val vpTokenArray = walletResult.getJSONArray("vp_token")
+            val vpTokenString = vpTokenArray.getString(0)
+
+            Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
+
+            val formBody = FormBody.Builder()
+                .add("sd_jwt_vc", vpTokenString)
+                .add("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
+                .build()
+
+            val request = Request.Builder()
+                .url("https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc")
+                .addHeader("Accept-Encoding", "application/json")
+                .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                .post(formBody)
+                .build()
+
+            return withContext(Dispatchers.IO) {
+                try {
+                    OkHttpClient().newCall(request).execute().use { response ->
+                    val body = response.body?.string() ?: return@use false
+                    val json = JSONObject(body)
+
+                    // top-level fields, not inside "claims"
+                    val givenName = json.optString("given_name", "")
+                    val familyName = json.optString("family_name", "")
+
+                    if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
+                        Log.d("ToonsStuff", "Name: $givenName $familyName")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                requireContext(),
+                                "Verified Name: $givenName $familyName",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        true
+                    } else {
+                        Log.d("ToonsStuff", "No birth name in response")
+                        false
+                    }
+                }
+                } catch (e: Exception) {
+                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+                    e.printStackTrace()
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
+            e.printStackTrace()
+            return false
+        }
     }
 
     /**
