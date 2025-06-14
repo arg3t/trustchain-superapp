@@ -12,6 +12,7 @@ import nl.tudelft.ipv8.attestation.trustchain.store.TrustChainStore
 import nl.tudelft.ipv8.attestation.trustchain.validation.TransactionValidator
 import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
 import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.PublicKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
@@ -31,6 +32,9 @@ import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
 import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
+import java.security.MessageDigest
+import java.util.Base64
+import kotlin.text.toByteArray
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
@@ -270,29 +274,37 @@ class TransactionRepository(
         return myBalance
     }
 
-    suspend fun verifyPeerRegistration(
-        recipient: ByteArray
+    fun verifyPeerRegistration(
+        pubKey: String,
+        name: String,
+        amount: Integer,
+        recipient: ByteArray,
+        ipProvider: IdentityProviderChecker,
     ): Boolean {
-        val userRegistrationBlock = getUserRegistrationBlock(recipient) ?: return false
-        val signedKey = userRegistrationBlock.transaction["signed_EUDI_key"] ?: return false
-        val signature = IPSignature.fromJsonString(signedKey.toString())
+        val sigData = getUserRegistrationBlock(recipient)?.transaction["signature"] ?: return false
 
-        Log.d("ToonsStuff", "Signature to verify: $signature")
-        val myIdentityProvider: WebAuthnIdentityProviderOwner =
-            (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+        val hasher = MessageDigest.getInstance("SHA256")
+        val decoder = Base64.getDecoder()
 
-        if (!myIdentityProvider.verify(signature)) {
-            return false
-        } else {
-            return eudiUtils.verifyEudiToken()
-        }
-        return true
+
+        val sig = IPSignature.fromJsonString(decoder.decode(sigData.toString()).toString())
+
+        val tmp = pubKey + " " + amount + " " + name
+        val hash = hasher.digest(tmp.toByteArray())
+
+        return ipProvider.verify(sig) && sig.data == hash
     }
 
     fun sendTransferProposal(
         recipient: ByteArray,
         amount: Long
     ): Boolean {
+        // Check if user we want to send money is already registered on the chain.
+        if (!verifyPeerRegistration(
+                trustChainCommunity.myPeer.publicKey.keyToBin()
+        )) {
+            return false
+        }
         Log.d("sendTransferProposal", "sending amount: $amount")
         if (getMyBalance() - amount < 0) {
             return false

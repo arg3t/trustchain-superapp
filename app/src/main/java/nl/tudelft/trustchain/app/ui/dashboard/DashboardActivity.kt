@@ -140,6 +140,8 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun onPermissionsDenied() {
+        Toast.makeText(application, "You denied permissions! >:(s", Toast.LENGTH_SHORT).show()
+        return;
         AlertDialog.Builder(this)
             .setMessage(getString(R.string.permissions_denied_message))
             .apply {

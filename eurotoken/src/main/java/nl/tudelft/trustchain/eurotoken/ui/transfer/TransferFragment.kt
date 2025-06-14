@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
+import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
@@ -44,6 +45,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.Base64
+import java.util.UUID
+import kotlin.collections.get
+import kotlin.math.sign
 
 const val TOON_MSG = "ToonsStuff"
 const val EUROTOKEN_MSG = "EUROTOKEN"
@@ -156,26 +162,47 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         binding.edtAmount.addDecimalLimiter()
 
         binding.btnRequest.setOnClickListener {
-            val amount = getAmount(binding.edtAmount.text.toString())
-            if (amount > 0) {
-                val myPeer = transactionRepository.trustChainCommunity.myPeer
-                val contact =
-                    ContactStore.getInstance(view.context).getContactFromPublicKey(ownKey)
+            lifecycleScope.launch {
+                val amount = getAmount(binding.edtAmount.text.toString())
+                if (amount > 0) {
+                    val myPeer = transactionRepository.trustChainCommunity.myPeer
+                    val contact =
+                        ContactStore.getInstance(view.context).getContactFromPublicKey(ownKey)
 
-                val connectionData = JSONObject()
-                connectionData.put("public_key", myPeer.publicKey.keyToBin().toHex())
-                connectionData.put("amount", amount)
-                connectionData.put("name", contact?.name ?: "")
-                connectionData.put("type", "transfer")
+                    val connectionData = JSONObject()
+                    val publicKey = myPeer.publicKey.keyToBin().toHex()
+                    connectionData.put("public_key", publicKey)
+                    connectionData.put("amount", amount)
+                    connectionData.put("name", contact?.name ?: "")
+                    connectionData.put("type", "transfer")
 
-                val args = Bundle()
+                    // TODO: :(((
+                    val myIdentityProvider: WebAuthnIdentityProviderOwner =
+                        (getIpv8().myPeer.identityProvider
+                            ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+                    Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
 
-                args.putString(RequestMoneyFragment.ARG_DATA, connectionData.toString())
+                    myIdentityProvider.context = requireActivity()
 
-                findNavController().navigate(
-                    R.id.action_transferFragment_to_requestMoneyFragment,
-                    args
-                )
+                    val tmp = publicKey + " " + amount + " " + contact?.name
+                    val hasher = MessageDigest.getInstance("SHA256")
+                    val hash = hasher.digest(tmp.toByteArray())
+
+                    val ip = myPeer.identityProvider?.sign(hash)
+                    ip?.let {
+                        val encoder = Base64.getEncoder();
+                        Log.d("ToonsStuff", "ip: $ip")
+                        connectionData.put("signature", encoder.encodeToString(ip.toJsonString().toByteArray()))
+                    }
+                    val args = Bundle()
+
+                    args.putString(RequestMoneyFragment.ARG_DATA, connectionData.toString())
+
+                    findNavController().navigate(
+                        R.id.action_transferFragment_to_requestMoneyFragment,
+                        args
+                    )
+                }
             }
         }
 
@@ -185,48 +212,62 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
         binding.btnRegister.setOnClickListener {
             lifecycleScope.launch {
-            val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
-                ?: throw Error("Could not find public key")
+                val myPublicKey = transactionRepository.getGatewayPeer()?.publicKey?.keyToBin()
+                    ?: throw Error("Could not find public key")
 
-            val nonce = UUID.randomUUID().toString()
-            val eudiToken = getEudiToken(nonce).toString()
-            Log.d("ToonsStuff", "EudiToken $eudiToken")
+                val nonce = UUID.randomUUID().toString()
+                val eudiToken = getEudiToken(nonce).toString()
+                Log.d("ToonsStuff", "EudiToken $eudiToken")
 
-            val myIdentityProvider: WebAuthnIdentityProviderOwner =
-                (getIpv8().myPeer.identityProvider ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
-            Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
+                val myIdentityProvider: WebAuthnIdentityProviderOwner =
+                    (getIpv8().myPeer.identityProvider
+                        ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
+                Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
 
-            myIdentityProvider.context = requireActivity()
-            val signedEudiToken = myIdentityProvider.sign(eudiToken.toByteArray())
-            val signedNonce = myIdentityProvider.sign(nonce.toByteArray())
-            Log.d("ToonsStuff", "Signed EUDI token: $signedEudiToken")
-            Log.d("ToonsStuff", "Signed nonce: $signedNonce")
+                myIdentityProvider.context = requireActivity()
+                val signedEudiToken = myIdentityProvider.sign(eudiToken.toByteArray())
+                val signedNonce = myIdentityProvider.sign(nonce.toByteArray())
+                Log.d("ToonsStuff", "Signed EUDI token: $signedEudiToken")
+                Log.d("ToonsStuff", "Signed nonce: $signedNonce")
 
-            val transaction = mapOf(
-                "signed_EUDI_token" to signedEudiToken?.toJsonString(),
-                "signed_nonce" to signedNonce?.toJsonString()
-            )
+                val transaction = mapOf(
+                    "signed_EUDI_token" to signedEudiToken?.toJsonString(),
+                    "signed_nonce" to signedNonce?.toJsonString()
+                )
 
-            val block = transactionRepository.trustChainCommunity.createProposalBlock(
-                "eurotoken_register",
-                transaction,
-                myPublicKey
-            )
-            transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
-                Log.d("ToonsStuff", "Sending to peer: " + peer.address)
-                transactionRepository.trustChainCommunity.sendBlock(block, peer)
-            }
-            transactionRepository.trustChainCommunity.addListener(
-                "eurotoken_register",
-                object : BlockListener {
-                override fun onBlockReceived(block: TrustChainBlock) {
-                    Log.d("ToonsStuff", "blockReceived: ${block.blockId} ${block.transaction}")
+                val block = transactionRepository.trustChainCommunity.createProposalBlock(
+                    "eurotoken_register",
+                    transaction,
+                    myPublicKey
+                )
+                transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
+                    Log.d("ToonsStuff", "Sending to peer: " + peer.address)
+                    transactionRepository.trustChainCommunity.sendBlock(block, peer)
                 }
-                }
-            )
-            Log.d("ToonsStuff", "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}")
-            Log.d("ToonsStuff", transactionRepository.trustChainCommunity.getChainLength().toString())
-            Toast.makeText(requireActivity(), "Registered on the ⛓\uFE0Fchain\uD83D\uDE80", Toast.LENGTH_LONG).show()
+                transactionRepository.trustChainCommunity.addListener(
+                    "eurotoken_register",
+                    object : BlockListener {
+                        override fun onBlockReceived(block: TrustChainBlock) {
+                            Log.d(
+                                "ToonsStuff",
+                                "blockReceived: ${block.blockId} ${block.transaction}"
+                            )
+                        }
+                    }
+                )
+                Log.d(
+                    "ToonsStuff",
+                    "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}"
+                )
+                Log.d(
+                    "ToonsStuff",
+                    transactionRepository.trustChainCommunity.getChainLength().toString()
+                )
+                Toast.makeText(
+                    requireActivity(),
+                    "Registered on the ⛓\uFE0Fchain\uD83D\uDE80",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -243,7 +284,8 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             put("type", "vp_token")
             put("presentation_definition", JSONObject().apply {
                 put("id", "1e7896b5-bbcc-4730-94b2-8232cfac2658")
-                put("input_descriptors", listOf(
+                put(
+                    "input_descriptors", listOf(
                     JSONObject().apply {
                         put("id", "f290d465-3fff-4637-89f1-08f8606ccd7b")
                         put("name", "Person Identification Data (PID)")
@@ -251,11 +293,15 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                         put("format", JSONObject().apply {
                             put("dc+sd-jwt", JSONObject().apply {
                                 put("sd-jwt_alg_values", listOf("ES256", "ES384", "ES512"))
-                                put("kb-jwt_alg_values", listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512"))
+                                put(
+                                    "kb-jwt_alg_values",
+                                    listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
+                                )
                             })
                         })
                         put("constraints", JSONObject().apply {
-                            put("fields", listOf(
+                            put(
+                                "fields", listOf(
                                 JSONObject().apply {
                                     put("path", listOf("$.vct"))
                                     put("filter", JSONObject().apply {
@@ -291,7 +337,8 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         val requestUri = verifierData.getString("request_uri")
         val requestUriMethod = verifierData.getString("request_uri_method")
 
-        val walletUrl = "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
+        val walletUrl =
+            "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
         val intent = Intent(Intent.ACTION_VIEW, walletUrl.toUri()).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
@@ -398,6 +445,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 args.putString(SendMoneyFragment.ARG_PUBLIC_KEY, connectionData.publicKey)
                 args.putLong(SendMoneyFragment.ARG_AMOUNT, connectionData.amount)
                 args.putString(SendMoneyFragment.ARG_NAME, connectionData.name)
+                args.putString(SendMoneyFragment.ARG_SIGNATURE, connectionData.signature)
 
                 // Try to send the addresses of the last X transactions to the peer we have just scanned.
                 try {
@@ -471,6 +519,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             var amount = this.optLong("amount", -1L)
             var name = this.optString("name")
             var type = this.optString("type")
+            var signature = this.optString("signature")
         }
 
         fun getAmount(amount: String): Long {
