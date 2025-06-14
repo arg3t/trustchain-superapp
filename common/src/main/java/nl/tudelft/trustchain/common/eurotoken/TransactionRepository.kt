@@ -275,21 +275,15 @@ class TransactionRepository(
     }
 
     fun verifyPeerRegistration(
-        pubKey: String,
-        name: String,
-        amount: Integer,
         recipient: ByteArray,
+        name: String,
+        amount: Long,
+        sig: IPSignature,
         ipProvider: IdentityProviderChecker,
     ): Boolean {
-        val sigData = getUserRegistrationBlock(recipient)?.transaction["signature"] ?: return false
-
         val hasher = MessageDigest.getInstance("SHA256")
-        val decoder = Base64.getDecoder()
 
-
-        val sig = IPSignature.fromJsonString(decoder.decode(sigData.toString()).toString())
-
-        val tmp = pubKey + " " + amount + " " + name
+        val tmp = recipient.toHex() + " " + amount + " " + name
         val hash = hasher.digest(tmp.toByteArray())
 
         return ipProvider.verify(sig) && sig.data == hash
@@ -299,12 +293,6 @@ class TransactionRepository(
         recipient: ByteArray,
         amount: Long
     ): Boolean {
-        // Check if user we want to send money is already registered on the chain.
-        if (!verifyPeerRegistration(
-                trustChainCommunity.myPeer.publicKey.keyToBin()
-        )) {
-            return false
-        }
         Log.d("sendTransferProposal", "sending amount: $amount")
         if (getMyBalance() - amount < 0) {
             return false
@@ -610,7 +598,7 @@ class TransactionRepository(
         return trustChainHelper
             .getChainByUser(trustChainHelper.getMyPublicKey())
             .reversed()
-            .firstOrNull { block ->
+            .lastOrNull { block ->
                 block.type == BLOCK_TYPE_REGISTER &&
                     block.publicKey.contentEquals(userKey)
             }

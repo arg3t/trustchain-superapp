@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.util.Base64
 
 data class IPSignature(
-    val data: String,
+    val data: ByteArray,
     val challenge: ByteArray,
     val authenticatorData: ByteArray,
     val signature: ByteArray
@@ -33,7 +33,7 @@ data class IPSignature(
     fun toJsonString(): String {
         val encoder = Base64.getEncoder()
         val json = JSONObject()
-        json.put("data", data)
+        json.put("data", encoder.encodeToString(data))
         json.put("challenge", encoder.encodeToString(challenge))
         json.put("authenticatorData", encoder.encodeToString(authenticatorData))
         json.put("IPsignature", encoder.encodeToString(signature))
@@ -45,7 +45,7 @@ data class IPSignature(
             val decoder = Base64.getDecoder()
             val json = JSONObject(jsonString)
             return IPSignature(
-                data = json.getString("data"),
+                data = decoder.decode(json.getString("challenge")),
                 challenge = decoder.decode(json.getString("challenge")),
                 authenticatorData = decoder.decode(json.getString("authenticatorData")),
                 signature = decoder.decode(json.getString("IPsignature"))

@@ -2,12 +2,15 @@ package nl.tudelft.trustchain.eurotoken.ui.transfer
 
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import kotlinx.coroutines.launch
 import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.messaging.SIGNATURE_SIZE
 import nl.tudelft.ipv8.util.hexToBytes
@@ -16,10 +19,13 @@ import nl.tudelft.trustchain.common.contacts.ContactStore
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
 import nl.tudelft.trustchain.common.util.viewBinding
 import nl.tudelft.trustchain.common.util.EUDIUtils
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderChecker
 import nl.tudelft.trustchain.eurotoken.EuroTokenMainActivity
 import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentSendMoneyBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
+import java.util.Base64
+import kotlin.collections.get
 
 class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     private var addContact = false
@@ -43,10 +49,12 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     ) {
         super.onViewCreated(view, savedInstanceState)
 
+        val decoder = Base64.getDecoder()
+        Log.d("YeatsStuff", "Signature decoded: ${decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString()}")
         val publicKey = requireArguments().getString(ARG_PUBLIC_KEY)!!
         val amount = requireArguments().getLong(ARG_AMOUNT)
         val name = requireArguments().getString(ARG_NAME)!!
-        val signature = IPSignature.fromJsonString(requireArguments().getString(ARG_SIGNATURE)!!)
+        val signature = IPSignature.fromJsonString(decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString())
 
         val key = defaultCryptoProvider.keyFromPublicBin(publicKey.hexToBytes())
         val contact = ContactStore.getInstance(view.context).getContactFromPublicKey(key)
@@ -102,15 +110,32 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         val trustScore = trustStore.getScore(publicKey.toByteArray())
         logger.info { "Trustscore: $trustScore" }
 
+        val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction?: HashMap<String, String>()
+
+        var checker: IdentityProviderChecker? = null
+        var nonce: String? = null
+        var tokenSig: IPSignature? = null
+
+        registrationBlock["signed_EUDI_token"]?.let { it -> tokenSig = IPSignature.fromJsonString(it.toString()) }
+        registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
+        registrationBlock["webauthn_key"]?.let { it -> checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes()) }
+
 
         lifecycleScope.launch {
-            if (!eudiUtils.verifyEudiToken()) {
+            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce) && transactionRepository.verifyPeerRegistration(
+               publicKey.hexToBytes(),
+                name,
+                amount,
+                signature,
+                checker,
+
+            )) {
                 binding.trustScoreWarning.text =
-                    getString(R.string.send_money_eudi_warning_failed)
+                    getString(R.string.send_money_eudi_success)
                 binding.trustScoreWarning.setBackgroundColor(
                     ContextCompat.getColor(
                         requireContext(),
-                        R.color.metallic_gold
+                        R.color.democracy_blue
                     )
                 )
             } else if (trustScore != null) {

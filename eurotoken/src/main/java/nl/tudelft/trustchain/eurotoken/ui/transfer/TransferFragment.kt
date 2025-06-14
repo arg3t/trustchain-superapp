@@ -24,6 +24,7 @@ import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
 import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
@@ -43,6 +44,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.ethereum.geth.Nonce
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -216,7 +219,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     ?: throw Error("Could not find public key")
 
                 val nonce = UUID.randomUUID().toString()
-                val eudiToken = getEudiToken(nonce).toString()
+                val eudiToken = getEudiToken(nonce)
                 Log.d("ToonsStuff", "EudiToken $eudiToken")
 
                 val myIdentityProvider: WebAuthnIdentityProviderOwner =
@@ -226,13 +229,21 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
                 myIdentityProvider.context = requireActivity()
                 val signedEudiToken = myIdentityProvider.sign(eudiToken.toByteArray())
-                val signedNonce = myIdentityProvider.sign(nonce.toByteArray())
+                if (signedEudiToken == null) {
+                    Log.d("ToonsStuff", "Failed to sign EUDI token")
+                    Toast.makeText(
+                        requireContext(),
+                        "Failed to sign EUDI token",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
                 Log.d("ToonsStuff", "Signed EUDI token: $signedEudiToken")
-                Log.d("ToonsStuff", "Signed nonce: $signedNonce")
 
                 val transaction = mapOf(
                     "signed_EUDI_token" to signedEudiToken?.toJsonString(),
-                    "signed_nonce" to signedNonce?.toJsonString()
+                    "nonce" to nonce,
+                    "webauthn_key" to myIdentityProvider.publicKey.toHex()
                 )
 
                 val block = transactionRepository.trustChainCommunity.createProposalBlock(
@@ -279,58 +290,60 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
      * @param nonce The nonce to use in the presentation request.
      * @return JSONObject containing the VP token response.
      */
-    suspend fun getEudiToken(nonce: String): JSONObject {
+    suspend fun getEudiToken(nonce: String): String {
         val presentationRequest = JSONObject().apply {
             put("type", "vp_token")
             put("presentation_definition", JSONObject().apply {
-                put("id", "1e7896b5-bbcc-4730-94b2-8232cfac2658")
+                put("id", UUID.randomUUID().toString())
                 put(
-                    "input_descriptors", listOf(
+                    "input_descriptors", JSONArray(listOf(
                     JSONObject().apply {
-                        put("id", "f290d465-3fff-4637-89f1-08f8606ccd7b")
+                        put("id", UUID.randomUUID().toString())
                         put("name", "Person Identification Data (PID)")
                         put("purpose", "")
                         put("format", JSONObject().apply {
                             put("dc+sd-jwt", JSONObject().apply {
-                                put("sd-jwt_alg_values", listOf("ES256", "ES384", "ES512"))
+                                put("sd-jwt_alg_values", JSONArray(listOf("ES256", "ES384", "ES512")))
                                 put(
                                     "kb-jwt_alg_values",
-                                    listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
+                                    JSONArray(listOf("RS256", "RS384", "RS512", "ES256", "ES384", "ES512"))
                                 )
                             })
                         })
                         put("constraints", JSONObject().apply {
                             put(
-                                "fields", listOf(
+                                "fields", JSONArray(listOf(
                                 JSONObject().apply {
-                                    put("path", listOf("$.vct"))
+                                    put("path", JSONArray(listOf("$.vct")))
                                     put("filter", JSONObject().apply {
                                         put("type", "string")
-                                        put("const", "urn:eu.europa.ec.eudi:pid:1")
+                                        put("const", "urn:eudi:pid:1")
                                     })
                                 },
                                 JSONObject().apply {
-                                    put("path", listOf("$.family_name"))
+                                    put("path", JSONArray(listOf("$.family_name")))
                                     put("intent_to_retain", false)
                                 },
                                 JSONObject().apply {
-                                    put("path", listOf("$.given_name"))
+                                    put("path", JSONArray(listOf("$.given_name")))
                                     put("intent_to_retain", false)
                                 }
-                            ))
+                            )))
                         })
                     }
-                ))
+                )))
             })
             put("nonce", nonce)
             put("request_uri_method", "get")
         }
 
-        val verifierData = makeApiCall(
+        Log.d("YeatStuff", "Body: $presentationRequest")
+        val verifierData = eudiUtils.makeApiCall(
             url = "https://verifier-backend.eudiw.dev/ui/presentations",
             method = "POST",
             body = presentationRequest.toString()
         ) ?: throw Exception("Failed to create presentation request")
+        Log.d("YeatStuff", "Verifier data: $verifierData")
 
         val transactionId = verifierData.getString("transaction_id")
         val clientId = verifierData.getString("client_id")
@@ -347,71 +360,11 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         val pollUrl = "https://verifier-backend.eudiw.dev/ui/presentations/$transactionId"
         while (true) {
             delay(1000)
-            val walletResult = makeApiCall(pollUrl, "GET", null)
+            val walletResult = eudiUtils.makeApiCall(pollUrl, "GET", null)
             if (walletResult != null && walletResult.has("vp_token")) {
-                return walletResult
+                return walletResult.getJSONArray("vp_token").getString(0)
+
             }
-        }
-    }
-
-    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
-        try {
-            Log.d("ToonsStuff", "Starting EUDI token verification")
-
-            val walletResult = token ?: getEudiToken()
-
-            val vpTokenArray = walletResult.getJSONArray("vp_token")
-            val vpTokenString = vpTokenArray.getString(0)
-
-            Log.d("ToonsStuff", "Extracted JWT: $vpTokenString")
-
-            val formBody = FormBody.Builder()
-                .add("sd_jwt_vc", vpTokenString)
-                .add("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
-                .build()
-
-            val request = Request.Builder()
-                .url("https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc")
-                .addHeader("Accept-Encoding", "application/json")
-                .addHeader("Content-Type", "application/x-www-form-urlencoded")
-                .post(formBody)
-                .build()
-
-            return withContext(Dispatchers.IO) {
-                try {
-                    OkHttpClient().newCall(request).execute().use { response ->
-                    val body = response.body?.string() ?: return@use false
-                    val json = JSONObject(body)
-
-                    // top-level fields, not inside "claims"
-                    val givenName = json.optString("given_name", "")
-                    val familyName = json.optString("family_name", "")
-
-                    if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
-                        Log.d("ToonsStuff", "Name: $givenName $familyName")
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(
-                                requireContext(),
-                                "Verified Name: $givenName $familyName",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        true
-                    } else {
-                        Log.d("ToonsStuff", "No birth name in response")
-                        false
-                    }
-                }
-                } catch (e: Exception) {
-                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
-                    e.printStackTrace()
-                    false
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
-            e.printStackTrace()
-            return false
         }
     }
 

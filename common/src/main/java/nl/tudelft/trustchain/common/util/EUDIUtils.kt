@@ -3,10 +3,14 @@ package nl.tudelft.trustchain.common.util
 import android.app.Activity
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
+import okhttp3.FormBody
 import org.json.JSONObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -16,134 +20,66 @@ import okhttp3.RequestBody.Companion.toRequestBody
 const val EUDI_LOG_MSG = "EUDIStuff"
 
 class EUDIUtils {
-    suspend fun getEudiToken(): Pair<JSONObject, String> {
-        Log.d(EUDI_LOG_MSG, "Opening EUDI app")
-
-        val content = """
-                    {
-                    "type": "vp_token",
-                    "presentation_definition": {
-                        "id": "1e7896b5-bbcc-4730-94b2-8232cfac2658",
-                        "input_descriptors": [
-                        {
-                            "id": "f290d465-3fff-4637-89f1-08f8606ccd7b",
-                            "name": "Person Identification Data (PID)",
-                            "purpose": "",
-                            "format": {
-                            "dc+sd-jwt": {
-                                "sd-jwt_alg_values": [
-                                "ES256",
-                                "ES384",
-                                "ES512"
-                                ],
-                                "kb-jwt_alg_values": [
-                                "RS256",
-                                "RS384",
-                                "RS512",
-                                "ES256",
-                                "ES384",
-                                "ES512"
-                                ]
-                            }
-                            },
-                            "constraints": {
-                            "fields": [
-                                {
-                                "path": [
-                                    "$.vct"
-                                ],
-                                "filter": {
-                                    "type": "string",
-                                    "const": "urn:eu.europa.ec.eudi:pid:1"
-                                }
-                                },
-                                {
-                                "path": [
-                                    "$.family_name"
-                                ],
-                                "intent_to_retain": false
-                                },
-                                {
-                                "path": [
-                                    "$.given_name"
-                                ],
-                                "intent_to_retain": false
-                                }
-                            ]
-                            }
-                        }
-                        ]
-                    },
-                    "nonce": "2418429c-f59f-4b48-99c1-4f4bfaff8116",
-                    "request_uri_method": "get"
-                    }
-                """.trimIndent()
-        val verifierData = makeApiCall("https://verifier-backend.eudiw.dev/ui/presentations", "POST", content) ?: JSONObject() // Unsafe, how to handle null case?
-        Log.d(EUDI_LOG_MSG, "Found my cool URL: $verifierData")
-
-        val transactionId = verifierData.getString("transaction_id")
-        val clientId = verifierData.getString("client_id")
-        val requestUri = verifierData.getString("request_uri")
-        val requestUriMethod = verifierData.getString("request_uri_method")
-
-        val url = "eudi-openid4vp://?client_id=$clientId&request_uri=$requestUri&request_uri_method=$requestUriMethod"
-
-        val getWalletUrl = "https://verifier-backend.eudiw.dev/ui/presentations/$transactionId"
-        // Primitive handling of EUDIW stuff, is there no better way?
-        while (true) {
-            delay(1000)
-            val walletResult = makeApiCall(getWalletUrl, "GET", body = null)
-            if (walletResult != null) {
-                val vpTokenarray = walletResult.getJSONArray("vp_token")
-                val vpToken = vpTokenarray[0].toString()
-                Log.d(EUDI_LOG_MSG, "Received VP token from thingy: $vpToken")
-                return Pair(walletResult, url)
-            } else {
-                Log.d(EUDI_LOG_MSG, "Failed to get wallet results")
-            }
+    suspend fun verifyEudiToken(checker: IdentityProviderChecker, signedEUDIToken: IPSignature, nonce: String): Boolean {
+        if (!checker.verify(signedEUDIToken)) {
+            Log.d("YeatsStuff", "Failed to verify EUDI token with identity provider")
+            return false;
         }
-    }
 
-    suspend fun verifyEudiToken(token: JSONObject? = null): Boolean {
         try {
-            Log.d(EUDI_LOG_MSG, "Starting EUDI token verification")
+            Log.d("ToonsStuff", "Starting EUDI token verification")
 
-            val walletResult = token ?: getEudiToken().first
+            val token = signedEUDIToken.data.toString()
 
-            val vpTokenArray = walletResult.getJSONArray("vp_token")
-            val vpTokenString = vpTokenArray.getString(0)
+            Log.d("ToonsStuff", "Extracted JWT: $token")
 
-            Log.d(EUDI_LOG_MSG, "Extracted JWT: $vpTokenString")
+            val formBody = FormBody.Builder()
+                .add("sd_jwt_vc", token)
+                .add("nonce", nonce)
+                .build()
 
-            val verifyRequestBody = JSONObject().apply {
-                put("sd_jwt_vc", vpTokenString)
-                put("nonce", "2418429c-f59f-4b48-99c1-4f4bfaff8116")
-            }.toString()
+            val request = Request.Builder()
+                .url("https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc")
+                .addHeader("Accept-Encoding", "application/json")
+                .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                .post(formBody)
+                .build()
 
-            val verificationResponse = makeApiCall(
-                "https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc",
-                "POST",
-                verifyRequestBody
-            )
+            return withContext(Dispatchers.IO) {
+                try {
+                    OkHttpClient().newCall(request).execute().use { response ->
+                        val body = response.body?.string() ?: return@use false
+                        val json = JSONObject(body)
 
-            if (verificationResponse == null) {
-                Log.e(EUDI_LOG_MSG, "Validation failed - null response")
-                return false
+                        // top-level fields, not inside "claims"
+                        val givenName = json.optString("given_name", "")
+                        val familyName = json.optString("family_name", "")
+
+                        if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
+                            Log.d("ToonsStuff", "Name: $givenName $familyName")
+                            /*
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Verified Name: $givenName $familyName",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            */
+                            true
+                        } else {
+                            Log.d("ToonsStuff", "No birth name in response")
+                            false
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+                    e.printStackTrace()
+                    false
+                }
             }
-
-            val isValid = verificationResponse.optBoolean("valid", false)
-
-            if (isValid) {
-                Log.d(EUDI_LOG_MSG, "SD-JWT verified successfully by EUDI validator")
-                return true
-            } else {
-                val errorMessage = verificationResponse.optString("error", "Unknown validation error")
-                Log.e(EUDI_LOG_MSG, "Token validation failed: $errorMessage")
-                return false
-            }
-
         } catch (e: Exception) {
-            Log.e(EUDI_LOG_MSG, "Error verifying token: ${e.message}")
+            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
             e.printStackTrace()
             return false
         }
