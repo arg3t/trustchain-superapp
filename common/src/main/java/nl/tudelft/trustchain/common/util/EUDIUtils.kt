@@ -29,7 +29,7 @@ class EUDIUtils {
         try {
             Log.d("ToonsStuff", "Starting EUDI token verification")
 
-            val token = signedEUDIToken.data.toString()
+            val token = signedEUDIToken.challenge.decodeToString()
 
             Log.d("ToonsStuff", "Extracted JWT: $token")
 

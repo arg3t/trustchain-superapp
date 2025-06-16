@@ -56,7 +56,7 @@ class DashboardActivity : AppCompatActivity() {
                     val intent = Intent(this, it.app.activity)
                     startActivity(intent)
                 } catch (_: IllegalStateException) {
-                    Toast.makeText(this, "balls lol ⚽⚽", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Select an Identity First!", Toast.LENGTH_SHORT).show()
                 }
             }
         )

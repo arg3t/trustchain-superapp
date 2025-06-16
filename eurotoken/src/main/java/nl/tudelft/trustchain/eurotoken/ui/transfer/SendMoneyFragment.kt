@@ -12,7 +12,6 @@ import kotlinx.coroutines.launch
 import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
-import nl.tudelft.ipv8.messaging.SIGNATURE_SIZE
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.common.contacts.ContactStore
@@ -50,11 +49,12 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         super.onViewCreated(view, savedInstanceState)
 
         val decoder = Base64.getDecoder()
-        Log.d("YeatsStuff", "Signature decoded: ${decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString()}")
+        val decodedSig = decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString()
+        Log.d("YeatsStuff", "Signature decoded: $decodedSig")
         val publicKey = requireArguments().getString(ARG_PUBLIC_KEY)!!
         val amount = requireArguments().getLong(ARG_AMOUNT)
         val name = requireArguments().getString(ARG_NAME)!!
-        val signature = IPSignature.fromJsonString(decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString())
+        val signature = IPSignature.fromJsonString(decodedSig)
 
         val key = defaultCryptoProvider.keyFromPublicBin(publicKey.hexToBytes())
         val contact = ContactStore.getInstance(view.context).getContactFromPublicKey(key)
@@ -110,25 +110,38 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         val trustScore = trustStore.getScore(publicKey.toByteArray())
         logger.info { "Trustscore: $trustScore" }
 
-        val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction?: HashMap<String, String>()
+        val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction
 
         var checker: IdentityProviderChecker? = null
         var nonce: String? = null
         var tokenSig: IPSignature? = null
 
-        registrationBlock["signed_EUDI_token"]?.let { it -> tokenSig = IPSignature.fromJsonString(it.toString()) }
-        registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
-        registrationBlock["webauthn_key"]?.let { it -> checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes()) }
-
+        if (registrationBlock != null) {
+            registrationBlock["signed_EUDI_token"]?.let { it ->
+                tokenSig = IPSignature.fromJsonString(it.toString())
+            }
+            registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
+            registrationBlock["webauthn_key"]?.let { it ->
+                checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
+            }
+        }
 
         lifecycleScope.launch {
-            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce) && transactionRepository.verifyPeerRegistration(
-               publicKey.hexToBytes(),
+            if(checker != null){
+                val result = transactionRepository.verifyTransactionSignature(
+                    publicKey,
+                    name,
+                    amount,
+                    signature,
+                    checker,
+                )
+            }
+            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce) && transactionRepository.verifyTransactionSignature(
+                publicKey,
                 name,
                 amount,
                 signature,
                 checker,
-
             )) {
                 binding.trustScoreWarning.text =
                     getString(R.string.send_money_eudi_success)

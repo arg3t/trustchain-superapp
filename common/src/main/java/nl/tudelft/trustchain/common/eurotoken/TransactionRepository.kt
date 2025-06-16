@@ -31,9 +31,7 @@ import java.lang.Math.abs
 import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
-import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderOwner
 import java.security.MessageDigest
-import java.util.Base64
 import kotlin.text.toByteArray
 
 class TransactionRepository(
@@ -274,8 +272,8 @@ class TransactionRepository(
         return myBalance
     }
 
-    fun verifyPeerRegistration(
-        recipient: ByteArray,
+    fun verifyTransactionSignature(
+        recipient: String,
         name: String,
         amount: Long,
         sig: IPSignature,
@@ -283,10 +281,12 @@ class TransactionRepository(
     ): Boolean {
         val hasher = MessageDigest.getInstance("SHA256")
 
-        val tmp = recipient.toHex() + " " + amount + " " + name
+        val nameForHash = if (name.isEmpty()) "null" else name
+
+        val tmp = recipient + " " + amount + " " + nameForHash
         val hash = hasher.digest(tmp.toByteArray())
 
-        return ipProvider.verify(sig) && sig.data == hash
+        return ipProvider.verify(sig) && sig.challenge.contentEquals(hash)
     }
 
     fun sendTransferProposal(
@@ -596,7 +596,7 @@ class TransactionRepository(
         userKey: ByteArray
     ): TrustChainBlock? {
         return trustChainHelper
-            .getChainByUser(trustChainHelper.getMyPublicKey())
+            .getChainByUser(userKey)
             .reversed()
             .lastOrNull { block ->
                 block.type == BLOCK_TYPE_REGISTER &&

@@ -35,7 +35,7 @@ class WebAuthnIdentityProviderChecker (
 
     override fun verify(signature: IPSignature): Boolean {
         return try {
-            val clientData = JSONObject(signature.data.toString())
+            val clientData = JSONObject(signature.data.decodeToString())
             val base64Challenge = clientData.getString("challenge")
             val decodedChallenge = Base64.decode(base64Challenge, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
