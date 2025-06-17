@@ -48,13 +48,18 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     ) {
         super.onViewCreated(view, savedInstanceState)
 
-        val decoder = Base64.getDecoder()
-        val decodedSig = decoder.decode(requireArguments().getString(ARG_SIGNATURE)!!).decodeToString()
-        Log.d("YeatsStuff", "Signature decoded: $decodedSig")
+        val rawSignature = requireArguments()
+            .getString(ARG_SIGNATURE)
+            ?.takeIf { it.isNotBlank() }
+
+        val signature: IPSignature? = rawSignature?.let { encoded ->
+            val decoded = Base64.getDecoder().decode(encoded).decodeToString()
+            Log.d("YeatsStuff", "Signature decoded: $decoded")
+            IPSignature.fromJsonString(decoded)
+        }
         val publicKey = requireArguments().getString(ARG_PUBLIC_KEY)!!
         val amount = requireArguments().getLong(ARG_AMOUNT)
         val name = requireArguments().getString(ARG_NAME)!!
-        val signature = IPSignature.fromJsonString(decodedSig)
 
         val key = defaultCryptoProvider.keyFromPublicBin(publicKey.hexToBytes())
         val contact = ContactStore.getInstance(view.context).getContactFromPublicKey(key)
@@ -127,30 +132,25 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         }
 
         lifecycleScope.launch {
-            if(checker != null){
-                val result = transactionRepository.verifyTransactionSignature(
-                    publicKey,
-                    name,
-                    amount,
-                    signature,
-                    checker,
-                )
-            }
-            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce) && transactionRepository.verifyTransactionSignature(
-                publicKey,
-                name,
-                amount,
-                signature,
-                checker,
-            )) {
-                binding.trustScoreWarning.text =
-                    getString(R.string.send_money_eudi_success)
-                binding.trustScoreWarning.setBackgroundColor(
-                    ContextCompat.getColor(
-                        requireContext(),
-                        R.color.democracy_blue
-                    )
-                )
+            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce)) {
+                signature?.let{
+                    if(transactionRepository.verifyTransactionSignature(
+                            publicKey,
+                            name,
+                            amount,
+                            signature,
+                            checker,
+                        )) {
+                        binding.trustScoreWarning.text =
+                            getString(R.string.send_money_eudi_success)
+                        binding.trustScoreWarning.setBackgroundColor(
+                            ContextCompat.getColor(
+                                requireContext(),
+                                R.color.democracy_blue
+                            )
+                        )
+                    }
+                }
             } else if (trustScore != null) {
                 if (trustScore >= TRUSTSCORE_AVERAGE_BOUNDARY) {
                     binding.trustScoreWarning.text =
