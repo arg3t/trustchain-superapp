@@ -93,9 +93,5 @@ dependencies {
     implementation 'androidx.sqlite:sqlite:2.4.0'
     implementation "app.cash.sqldelight:android-driver:$sqldelight_version"
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    testImplementation "org.robolectric:robolectric:4.10.3"
-    testImplementation "androidx.test:core:1.5.0"
-    testImplementation "androidx.fragment:fragment-testing:1.6.0"
-    testImplementation "androidx.arch.core:core-testing:2.1.0"
     implementation "org.slf4j:slf4j-simple:1.7.36"
 }
