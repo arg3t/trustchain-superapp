@@ -18,6 +18,7 @@ import org.json.JSONObject
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import kotlin.text.*
 
 private const val TAG = "WebAuthnIdentity"
 

@@ -43,7 +43,7 @@ buildscript {
 }
 
 plugins {
-    id("org.jetbrains.kotlin.plugin.compose") version "2.2.0-Beta2"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
 }
 
 
@@ -61,6 +61,8 @@ allprojects {
             force("org.objenesis:objenesis:2.6")
             force('com.google.inject:guice:4.2.1')
             force('com.google.inject:guice-multibindings:4.2.1')
+            force("org.jetbrains.kotlin:kotlin-stdlib:2.1.0")
+            force("org.jetbrains.kotlin:kotlin-stdlib-common:2.1.0")
         }
     }
 

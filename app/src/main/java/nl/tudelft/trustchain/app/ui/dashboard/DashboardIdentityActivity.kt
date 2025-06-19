@@ -65,6 +65,7 @@ class DashboardIdentityActivity : AppCompatActivity() {
     }
 
 
+    @OptIn(ExperimentalStdlibApi::class)
     private fun saveIdentities() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val jsonArray = JSONArray()

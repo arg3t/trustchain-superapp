@@ -16,6 +16,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlin.text.*
 
 const val EUDI_LOG_MSG = "EUDIStuff"
 
