@@ -115,23 +115,23 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         val trustScore = trustStore.getScore(publicKey.toByteArray())
         logger.info { "Trustscore: $trustScore" }
 
-        val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction
-
-        var checker: IdentityProviderChecker? = null
-        var nonce: String? = null
-        var tokenSig: IPSignature? = null
-
-        if (registrationBlock != null) {
-            registrationBlock["signed_EUDI_token"]?.let { it ->
-                tokenSig = IPSignature.fromJsonString(it.toString())
-            }
-            registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
-            registrationBlock["webauthn_key"]?.let { it ->
-                checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
-            }
-        }
-
         lifecycleScope.launch {
+            val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction
+
+            var checker: IdentityProviderChecker? = null
+            var nonce: String? = null
+            var tokenSig: IPSignature? = null
+
+            if (registrationBlock != null) {
+                registrationBlock["signed_EUDI_token"]?.let { it ->
+                    tokenSig = IPSignature.fromJsonString(it.toString())
+                }
+                registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
+                registrationBlock["webauthn_key"]?.let { it ->
+                    checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
+                }
+            }
+
             if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce)) {
                 signature?.let{
                     if(transactionRepository.verifyTransactionSignature(
