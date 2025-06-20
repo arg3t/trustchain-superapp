@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.runBlocking
 import nl.tudelft.ipv8.IPv4Address
+import nl.tudelft.ipv8.IPv8
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.android.IPv8Android
 import nl.tudelft.ipv8.attestation.trustchain.*
@@ -11,6 +12,7 @@ import nl.tudelft.ipv8.attestation.trustchain.store.TrustChainStore
 import nl.tudelft.ipv8.attestation.trustchain.validation.TransactionValidator
 import nl.tudelft.ipv8.attestation.trustchain.validation.ValidationResult
 import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.PublicKey
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
@@ -24,10 +26,13 @@ import org.bitcoinj.core.Address
 import org.bitcoinj.core.Coin
 import org.bitcoinj.wallet.SendRequest
 import nl.tudelft.trustchain.common.util.TrustChainHelper
+import nl.tudelft.trustchain.common.util.EUDIUtils
 import java.lang.Math.abs
 import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
+import java.security.MessageDigest
+import kotlin.text.toByteArray
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
@@ -36,8 +41,16 @@ class TransactionRepository(
     private val scope = CoroutineScope(Dispatchers.IO)
     private val trustChainHelper = TrustChainHelper(trustChainCommunity)
 
+    private val eudiUtils by lazy {
+        EUDIUtils()
+    }
+
     fun getGatewayPeer(): Peer? {
         return gatewayStore.getPreferred().getOrNull(0)?.peer
+    }
+
+    private fun getIpv8(): IPv8 {
+        return IPv8Android.getInstance()
     }
 
     private fun getBalanceChangeForBlock(block: TrustChainBlock?): Long {
@@ -259,26 +272,27 @@ class TransactionRepository(
         return myBalance
     }
 
-    fun verifyPeerRegistration(
-        recipient: ByteArray
+    fun verifyTransactionSignature(
+        recipient: String,
+        name: String,
+        amount: Long,
+        sig: IPSignature,
+        ipProvider: IdentityProviderChecker,
     ): Boolean {
-        val userRegistrationBlock = getUserRegistrationBlock(recipient) ?: return false
-        val signedKey = userRegistrationBlock.transaction["signed_EUDI_key"] ?: return false
-        val signature = IPSignature.fromJsonString(signedKey.toString()).signature
-        // Verification using EUDI stuff will go here.
+        val hasher = MessageDigest.getInstance("SHA256")
 
-        Log.d("ToonsStuff", "Signature to verify: $signature")
-        return true
+        val nameForHash = if (name.isEmpty()) "null" else name
+
+        val tmp = recipient + " " + amount + " " + nameForHash
+        val hash = hasher.digest(tmp.toByteArray())
+
+        return ipProvider.verify(sig) && sig.challenge.contentEquals(hash)
     }
 
     fun sendTransferProposal(
         recipient: ByteArray,
         amount: Long
     ): Boolean {
-        // Check if user we want to send money is already registered on the chain.
-        if (!verifyPeerRegistration(recipient)) {
-            return false
-        }
         Log.d("sendTransferProposal", "sending amount: $amount")
         if (getMyBalance() - amount < 0) {
             return false
@@ -582,9 +596,9 @@ class TransactionRepository(
         userKey: ByteArray
     ): TrustChainBlock? {
         return trustChainHelper
-            .getChainByUser(trustChainHelper.getMyPublicKey())
+            .getChainByUser(userKey)
             .reversed()
-            .firstOrNull { block ->
+            .lastOrNull { block ->
                 block.type == BLOCK_TYPE_REGISTER &&
                     block.publicKey.contentEquals(userKey)
             }

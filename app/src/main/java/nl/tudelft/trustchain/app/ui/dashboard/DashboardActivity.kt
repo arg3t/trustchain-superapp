@@ -56,7 +56,7 @@ class DashboardActivity : AppCompatActivity() {
                     val intent = Intent(this, it.app.activity)
                     startActivity(intent)
                 } catch (_: IllegalStateException) {
-                    Toast.makeText(this, "balls lol ⚽⚽", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Select an Identity First!", Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -140,6 +140,8 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun onPermissionsDenied() {
+        Toast.makeText(application, "You denied permissions! >:(s", Toast.LENGTH_SHORT).show()
+        return;
         AlertDialog.Builder(this)
             .setMessage(getString(R.string.permissions_denied_message))
             .apply {

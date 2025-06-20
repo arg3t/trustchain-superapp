@@ -2,25 +2,38 @@ package nl.tudelft.trustchain.eurotoken.ui.transfer
 
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import kotlinx.coroutines.launch
+import nl.tudelft.ipv8.keyvault.IPSignature
+import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.common.contacts.ContactStore
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
 import nl.tudelft.trustchain.common.util.viewBinding
+import nl.tudelft.trustchain.common.util.EUDIUtils
+import nl.tudelft.trustchain.common.util.WebAuthnIdentityProviderChecker
 import nl.tudelft.trustchain.eurotoken.EuroTokenMainActivity
 import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentSendMoneyBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
+import java.util.Base64
+import kotlin.collections.get
 
 class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     private var addContact = false
 
     private val binding by viewBinding(FragmentSendMoneyBinding::bind)
+
+    private val eudiUtils by lazy {
+        EUDIUtils()
+    }
 
     private val ownPublicKey by lazy {
         defaultCryptoProvider.keyFromPublicBin(
@@ -35,6 +48,15 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     ) {
         super.onViewCreated(view, savedInstanceState)
 
+        val rawSignature = requireArguments()
+            .getString(ARG_SIGNATURE)
+            ?.takeIf { it.isNotBlank() }
+
+        val signature: IPSignature? = rawSignature?.let { encoded ->
+            val decoded = Base64.getDecoder().decode(encoded).decodeToString()
+            Log.d("YeatsStuff", "Signature decoded: $decoded")
+            IPSignature.fromJsonString(decoded)
+        }
         val publicKey = requireArguments().getString(ARG_PUBLIC_KEY)!!
         val amount = requireArguments().getLong(ARG_AMOUNT)
         val name = requireArguments().getString(ARG_NAME)!!
@@ -93,45 +115,82 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         val trustScore = trustStore.getScore(publicKey.toByteArray())
         logger.info { "Trustscore: $trustScore" }
 
-        if (trustScore != null) {
-            if (trustScore >= TRUSTSCORE_AVERAGE_BOUNDARY) {
-                binding.trustScoreWarning.text =
-                    getString(R.string.send_money_trustscore_warning_high, trustScore)
-                binding.trustScoreWarning.setBackgroundColor(
-                    ContextCompat.getColor(
-                        requireContext(),
-                        R.color.android_green
+        val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction
+
+        var checker: IdentityProviderChecker? = null
+        var nonce: String? = null
+        var tokenSig: IPSignature? = null
+
+        if (registrationBlock != null) {
+            registrationBlock["signed_EUDI_token"]?.let { it ->
+                tokenSig = IPSignature.fromJsonString(it.toString())
+            }
+            registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
+            registrationBlock["webauthn_key"]?.let { it ->
+                checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
+            }
+        }
+
+        lifecycleScope.launch {
+            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce)) {
+                signature?.let{
+                    if(transactionRepository.verifyTransactionSignature(
+                            publicKey,
+                            name,
+                            amount,
+                            signature,
+                            checker,
+                        )) {
+                        binding.trustScoreWarning.text =
+                            getString(R.string.send_money_eudi_success)
+                        binding.trustScoreWarning.setBackgroundColor(
+                            ContextCompat.getColor(
+                                requireContext(),
+                                R.color.democracy_blue
+                            )
+                        )
+                    }
+                }
+            } else if (trustScore != null) {
+                if (trustScore >= TRUSTSCORE_AVERAGE_BOUNDARY) {
+                    binding.trustScoreWarning.text =
+                        getString(R.string.send_money_trustscore_warning_high, trustScore)
+                    binding.trustScoreWarning.setBackgroundColor(
+                        ContextCompat.getColor(
+                            requireContext(),
+                            R.color.android_green
+                        )
                     )
-                )
-            } else if (trustScore > TRUSTSCORE_LOW_BOUNDARY) {
+                } else if (trustScore > TRUSTSCORE_LOW_BOUNDARY) {
+                    binding.trustScoreWarning.text =
+                        getString(R.string.send_money_trustscore_warning_average, trustScore)
+                    binding.trustScoreWarning.setBackgroundColor(
+                        ContextCompat.getColor(
+                            requireContext(),
+                            R.color.metallic_gold
+                        )
+                    )
+                } else {
+                    binding.trustScoreWarning.text =
+                        getString(R.string.send_money_trustscore_warning_low, trustScore)
+                    binding.trustScoreWarning.setBackgroundColor(
+                        ContextCompat.getColor(
+                            requireContext(),
+                            R.color.red
+                        )
+                    )
+                }
+            } else {
                 binding.trustScoreWarning.text =
-                    getString(R.string.send_money_trustscore_warning_average, trustScore)
+                    getString(R.string.send_money_trustscore_warning_no_score)
                 binding.trustScoreWarning.setBackgroundColor(
                     ContextCompat.getColor(
                         requireContext(),
                         R.color.metallic_gold
                     )
                 )
-            } else {
-                binding.trustScoreWarning.text =
-                    getString(R.string.send_money_trustscore_warning_low, trustScore)
-                binding.trustScoreWarning.setBackgroundColor(
-                    ContextCompat.getColor(
-                        requireContext(),
-                        R.color.red
-                    )
-                )
+                binding.trustScoreWarning.visibility = View.VISIBLE
             }
-        } else {
-            binding.trustScoreWarning.text =
-                getString(R.string.send_money_trustscore_warning_no_score)
-            binding.trustScoreWarning.setBackgroundColor(
-                ContextCompat.getColor(
-                    requireContext(),
-                    R.color.metallic_gold
-                )
-            )
-            binding.trustScoreWarning.visibility = View.VISIBLE
         }
 
         binding.btnSend.setOnClickListener {
@@ -141,6 +200,7 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
                 ContactStore.getInstance(requireContext())
                     .addContact(key, newName)
             }
+            Log.d("ToonsStuff", "Sending a transaction with signature: $signature")
             val success = transactionRepository.sendTransferProposal(publicKey.hexToBytes(), amount)
             if (!success) {
                 return@setOnClickListener Toast.makeText(
@@ -157,6 +217,7 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         const val ARG_AMOUNT = "amount"
         const val ARG_PUBLIC_KEY = "pubkey"
         const val ARG_NAME = "name"
+        const val ARG_SIGNATURE = "signature"
         const val TRUSTSCORE_AVERAGE_BOUNDARY = 70
         const val TRUSTSCORE_LOW_BOUNDARY = 30
     }

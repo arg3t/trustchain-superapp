@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -80,6 +81,7 @@ class ExchangeFragment : EurotokenBaseFragment() {
             val type = this.optString("type")
         }
         qrCodeUtils.parseActivityResult(requestCode, resultCode, data)?.let {
+            Log.d("YeatStuff", it)
             try {
                 val connectionData = ConnectionData(it)
                 Toast.makeText(requireContext(), connectionData.ip, Toast.LENGTH_LONG).show()

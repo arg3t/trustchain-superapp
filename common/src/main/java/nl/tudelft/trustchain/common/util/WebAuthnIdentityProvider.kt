@@ -18,6 +18,7 @@ import org.json.JSONObject
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import kotlin.text.*
 
 private const val TAG = "WebAuthnIdentity"
 
@@ -35,7 +36,7 @@ class WebAuthnIdentityProviderChecker (
 
     override fun verify(signature: IPSignature): Boolean {
         return try {
-            val clientData = JSONObject(signature.data)
+            val clientData = JSONObject(signature.data.decodeToString())
             val base64Challenge = clientData.getString("challenge")
             val decodedChallenge = Base64.decode(base64Challenge, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
@@ -44,7 +45,7 @@ class WebAuthnIdentityProviderChecker (
                 return false
             }
 
-            val clientDataHash = SignatureUtils.hash(signature.data.toByteArray())
+            val clientDataHash = SignatureUtils.hash(signature.data)
 
             val signedData = signature.authenticatorData + clientDataHash
 
@@ -123,7 +124,7 @@ class WebAuthnIdentityProviderOwner(
                 val clientDataJSON = Base64.decode(response.getString("clientDataJSON"), Base64.URL_SAFE).toString(Charsets.UTF_8)
 
                 val sig = IPSignature(
-                    data = clientDataJSON,
+                    data = clientDataJSON.toByteArray(),
                     challenge = challenge,
                     authenticatorData = authenticatorData,
                     signature = signature
