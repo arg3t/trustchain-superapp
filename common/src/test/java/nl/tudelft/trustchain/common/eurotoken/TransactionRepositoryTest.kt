@@ -31,7 +31,7 @@ class TransactionRepositoryTest {
 
     @Test
     fun testInit() {
-        // Original test for backwards compatibility
+        // don't think about this too much, just check that the repository is initialized
         assertNotNull(transactionRepository)
     }
 
@@ -41,10 +41,10 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = "test-name"
         val amount = 100L
-        
+
         val expectedMessage = "$recipient $amount $name"
         val expectedHash = MessageDigest.getInstance("SHA256").digest(expectedMessage.toByteArray())
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns expectedHash
 
@@ -64,7 +64,7 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = "test-name"
         val amount = 100L
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns false
         every { mockSignature.challenge } returns ByteArray(32) // any hash
 
@@ -84,9 +84,9 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = "test-name"
         val amount = 100L
-        
+
         val wrongHash = ByteArray(32) { 0xFF.toByte() } // Different hash
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns wrongHash
 
@@ -105,11 +105,11 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = ""
         val amount = 100L
-        
+
         // When name is empty, it should be replaced with "null" in the hash calculation
         val expectedMessage = "$recipient $amount null"
         val expectedHash = MessageDigest.getInstance("SHA256").digest(expectedMessage.toByteArray())
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns expectedHash
 
@@ -128,10 +128,10 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = "test-name"
         val amount = -50L
-        
+
         val expectedMessage = "$recipient $amount $name"
         val expectedHash = MessageDigest.getInstance("SHA256").digest(expectedMessage.toByteArray())
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns expectedHash
 
@@ -150,10 +150,10 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient"
         val name = "test-name"
         val amount = 0L
-        
+
         val expectedMessage = "$recipient $amount $name"
         val expectedHash = MessageDigest.getInstance("SHA256").digest(expectedMessage.toByteArray())
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns expectedHash
 
@@ -172,10 +172,10 @@ class TransactionRepositoryTest {
         val recipient = "test-recipient@example.com"
         val name = "Test Name with Spaces & Special Ch@rs"
         val amount = 100L
-        
+
         val expectedMessage = "$recipient $amount $name"
         val expectedHash = MessageDigest.getInstance("SHA256").digest(expectedMessage.toByteArray())
-        
+
         every { mockIdentityProviderChecker.verify(mockSignature) } returns true
         every { mockSignature.challenge } returns expectedHash
 
