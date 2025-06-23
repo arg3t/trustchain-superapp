@@ -33,7 +33,7 @@ class HexUtilsTest {
         val txid = "d19306e0"
         Assert.assertEquals(txid, txid.hexToBytes().toHex())
         @Suppress("DEPRECATION")
-        Assert.assertEquals(txid, txid.toUpperCase().hexToBytes().toHex())
+        Assert.assertEquals(txid, txid.uppercase().hexToBytes().toHex())
     }
 
     @Test(expected = IllegalArgumentException::class)

@@ -198,6 +198,10 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                         Log.d("ToonsStuff", "ip: $ip")
                         connectionData.put("signature", encoder.encodeToString(ip.toJsonString().toByteArray()))
                     }
+                    transactionRepository.getSelfRegistrationBlock()?.let { block ->
+                        connectionData.put("rb", block.blockId)
+                    }
+
                     val args = Bundle()
 
                     args.putString(RequestMoneyFragment.ARG_DATA, connectionData.toString())
@@ -397,6 +401,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 args.putLong(SendMoneyFragment.ARG_AMOUNT, connectionData.amount)
                 args.putString(SendMoneyFragment.ARG_NAME, connectionData.name)
                 args.putString(SendMoneyFragment.ARG_SIGNATURE, connectionData.signature)
+                args.putString(SendMoneyFragment.ARG_REGISTRATION_BLOCK, connectionData.registrationBlock)
 
                 // Try to send the addresses of the last X transactions to the peer we have just scanned.
                 try {
@@ -470,6 +475,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             var amount = this.optLong("amount", -1L)
             var name = this.optString("name")
             var type = this.optString("type")
+            var registrationBlock = this.optString("rb")
             var signature = this.optString("signature")
         }
 
