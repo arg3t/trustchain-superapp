@@ -20,19 +20,52 @@ import kotlin.text.*
 
 const val EUDI_LOG_MSG = "EUDIStuff"
 
+/**
+ * Helper methods for interacting with the **European Digital Identity (EUDI) Wallet**
+ * proof-of-concept verifier backend and for making generic JSON HTTP calls.
+ *
+ * All public functions are `suspend` and shift network I/O to `Dispatchers.IO`;
+ * callers can therefore invoke them safely from `lifecycleScope` or other
+ * structured-concurrency contexts.
+ */
 class EUDIUtils {
+
+    /**
+     * Performs an **end-to-end verification** of a *Signed Disclosure JWT VC* (SD-JWT VC)
+     * issued by an EUDI wallet.
+     *
+     * Verification pipeline:
+     * 1. **Local cryptographic check** – the supplied [checker] confirms that
+     *    the detached WebAuthn signature [signedEUDIToken] is valid for the
+     *    credential’s public key.
+     * 2. **Remote semantics check** – the raw JWT (extracted from
+     *    `signedEUDIToken.challenge`) and the anti-replay [nonce] are POSTed to
+     *    `https://verifier-backend.eudiw.dev/utilities/validations/sdJwtVc`.
+     *    The JSON response is accepted when it exposes at least one of the
+     *    `given_name` or `family_name` claims, proving the backend trusted the VC.
+     *
+     * Any exception during network or JSON processing is caught and logged; the
+     * function then returns `false` so that callers treat the token as unverified.
+     *
+     * @param checker          Component capable of verifying WebAuthn or other
+     *                         identity-provider signatures.
+     * @param signedEUDIToken  Detached signature container (`IPSignature`) that
+     *                         carries the JWT in its `challenge` field.
+     * @param nonce            Server-supplied nonce binding the proof to a session.
+     * @return `true` when **both** the local and remote checks succeed, `false` otherwise.
+     */
     suspend fun verifyEudiToken(checker: IdentityProviderChecker, signedEUDIToken: IPSignature, nonce: String): Boolean {
         if (!checker.verify(signedEUDIToken)) {
-            Log.d("YeatsStuff", "Failed to verify EUDI token with identity provider")
+            Log.d(EUDI_LOG_MSG, "Failed to verify EUDI token with identity provider")
             return false;
         }
 
         try {
-            Log.d("ToonsStuff", "Starting EUDI token verification")
+            Log.d(EUDI_LOG_MSG, "Starting EUDI token verification")
 
             val token = signedEUDIToken.challenge.decodeToString()
 
-            Log.d("ToonsStuff", "Extracted JWT: $token")
+            Log.d(EUDI_LOG_MSG, "Extracted JWT: $token")
 
             val formBody = FormBody.Builder()
                 .add("sd_jwt_vc", token)
@@ -57,35 +90,40 @@ class EUDIUtils {
                         val familyName = json.optString("family_name", "")
 
                         if (givenName.isNotEmpty() || familyName.isNotEmpty()) {
-                            Log.d("ToonsStuff", "Name: $givenName $familyName")
-                            /*
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Verified Name: $givenName $familyName",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                            */
+                            Log.d(EUDI_LOG_MSG, "Name: $givenName $familyName")
                             true
                         } else {
-                            Log.d("ToonsStuff", "No birth name in response")
+                            Log.d(EUDI_LOG_MSG, "No birth name in response")
                             false
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("ToonsStuff", "Error verifying token: ${e.message}")
+                    Log.e(EUDI_LOG_MSG, "Error verifying token: ${e.message}")
                     e.printStackTrace()
                     false
                 }
             }
         } catch (e: Exception) {
-            Log.e("ToonsStuff", "Error in verification process: ${e.message}")
+            Log.e(EUDI_LOG_MSG, "Error in verification process: ${e.message}")
             e.printStackTrace()
             return false
         }
     }
 
+    /**
+     * Convenience wrapper around **OkHttp** that performs a single HTTP request and
+     * returns the body parsed as a [JSONObject].
+     *
+     * The call is executed on `Dispatchers.IO`; the response stream is closed
+     * automatically by the `use` block.
+     *
+     * @param url    Absolute URL to contact.
+     * @param method HTTP verb (`"GET"`, `"POST"`, `"PUT"`, …).
+     * @param body   Optional JSON payload; pass `null` for verbs that do not
+     *               require a body.
+     * @return A parsed JSON object, or `null` when the body is empty, malformed,
+     *         or an I/O exception occurs.
+     */
     suspend fun makeApiCall(url: String, method: String, body: String?): JSONObject? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)

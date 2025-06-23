@@ -93,6 +93,38 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
         }
     }
 
+    /**
+     * Wires UI controls and orchestrates three distinct click flows:
+     *
+     * 1. **Request button (`btnRequest`)**
+     *    * Validates the entered amount.
+     *    * Creates a JSON **`connectionData`** object containing `public_key`,
+     *      `amount`, `name` and `"transfer"` type.
+     *    * Hashes the concatenation “`publicKey amount name`” with SHA-256,
+     *      signs the hash via the **current WebAuthn identity provider** and
+     *      stores the Base64URL-encoded signature under `signature`.
+     *    * Adds the caller’s *registration* sequence number (`seqNr`) when
+     *      available so that the recipient can fetch the EUDI token later.
+     *    * Navigates to `RequestMoneyFragment`, passing the JSON as an argument.
+     *
+     * 2. **Send button (`btnSend`)**
+     *    * Launches the embedded QR-code scanner; unchanged from the legacy flow.
+     *
+     * 3. **Register button (`btnRegister`)**
+     *    * Generates a 128-bit random **nonce**.
+     *    * Calls [getEudiToken] to retrieve a signed SD-JWT VP token from the
+     *      EUDI wallet app.
+     *    * Signs the token with the current WebAuthn credential, yielding an
+     *      [`IPSignature`].
+     *    * Builds a `transaction` map with keys
+     *      `signed_EUDI_token`, `nonce`, `webauthn_key`.
+     *    * Creates and broadcasts an `eurotoken_register` proposal block,
+     *      then attaches a `BlockListener` merely for debug logging.
+     *    * Displays a rocket-emoji toast once the block is on the ⛓ chain.
+     *
+     * Errors are surfaced with `Toast` messages and detailed `Log.d`/`Log.e`
+     * statements for troubleshooting.
+     */
     override fun onViewCreated(
         view: View,
         savedInstanceState: Bundle?
@@ -171,7 +203,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     val myIdentityProvider: WebAuthnIdentityProviderOwner =
                         (getIpv8().myPeer.identityProvider
                             ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
-                    Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
+                    Log.d(TOON_MSG, "Identity provider: $myIdentityProvider")
 
                     myIdentityProvider.context = requireActivity()
 
@@ -182,7 +214,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     val ip = myPeer.identityProvider?.sign(hash)
                     ip?.let {
                         val encoder = Base64.getEncoder();
-                        Log.d("ToonsStuff", "ip: $ip")
+                        Log.d(TOON_MSG, "ip: $ip")
                         connectionData.put("signature", encoder.encodeToString(ip.toJsonString().toByteArray()))
                     }
                     transactionRepository.getSelfRegistrationBlock()?.let { block ->
@@ -212,17 +244,17 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
 
                 val nonce = UUID.randomUUID().toString()
                 val eudiToken = getEudiToken(nonce)
-                Log.d("ToonsStuff", "EudiToken $eudiToken")
+                Log.d(TOON_MSG, "EudiToken $eudiToken")
 
                 val myIdentityProvider: WebAuthnIdentityProviderOwner =
                     (getIpv8().myPeer.identityProvider
                         ?: throw Error("big problems bro")) as WebAuthnIdentityProviderOwner
-                Log.d("ToonsStuff", "Identity provider: $myIdentityProvider")
+                Log.d(TOON_MSG, "Identity provider: $myIdentityProvider")
 
                 myIdentityProvider.context = requireActivity()
                 val signedEudiToken = myIdentityProvider.sign(eudiToken.toByteArray())
                 if (signedEudiToken == null) {
-                    Log.d("ToonsStuff", "Failed to sign EUDI token")
+                    Log.d(TOON_MSG, "Failed to sign EUDI token")
                     Toast.makeText(
                         requireContext(),
                         "Failed to sign EUDI token",
@@ -230,7 +262,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     ).show()
                     return@launch
                 }
-                Log.d("ToonsStuff", "Signed EUDI token: $signedEudiToken")
+                Log.d(TOON_MSG, "Signed EUDI token: $signedEudiToken")
 
                 val transaction = mapOf(
                     "signed_EUDI_token" to signedEudiToken?.toJsonString(),
@@ -249,18 +281,18 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     object : BlockListener {
                         override fun onBlockReceived(block: TrustChainBlock) {
                             Log.d(
-                                "ToonsStuff",
+                                TOON_MSG,
                                 "blockReceived: ${block.blockId} ${block.transaction}"
                             )
                         }
                     }
                 )
                 Log.d(
-                    "ToonsStuff",
+                    TOON_MSG,
                     "Size of db:  ${transactionRepository.trustChainCommunity.database.getAllBlocks().size}"
                 )
                 Log.d(
-                    "ToonsStuff",
+                    TOON_MSG,
                     transactionRepository.trustChainCommunity.getChainLength().toString()
                 )
                 Toast.makeText(
@@ -273,11 +305,25 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
     }
 
     /**
-     * Requests a EUDI VP token from the wallet app using the given nonce.
-     * Launches the wallet app for user interaction and polls for the result.
+     * Issues an **OpenID4VP** presentation request to the EUDI verifier backend,
+     * hands the request URI over to the wallet app, then **polls** the backend
+     * until a `vp_token` is returned.
      *
-     * @param nonce The nonce to use in the presentation request.
-     * @return JSONObject containing the VP token response.
+     * Implementation notes:
+     * * A rich `presentation_definition` requests PID claims (`family_name`,
+     *   `given_name`) and binds the proof to the supplied [nonce].
+     * * The wallet app is launched via a deep-link
+     *   `eudi-openid4vp://?client_id=…&request_uri=…`.
+     * * The coroutine polls
+     *   `https://verifier-backend.eudiw.dev/ui/presentations/{transaction_id}`
+     *   every 1 s until the backend supplies a non-empty `vp_token` array.
+     *
+     * @param nonce Fresh random value that prevents replay and links the final
+     *              SD-JWT VC to this specific request. Must be echoed by the
+     *              wallet.
+     * @return The first element of the backend’s `vp_token` array (raw JWT).
+     * @throws Exception When the backend call fails or the polling loop never
+     *                   returns a token (caller decides timeout policy).
      */
     suspend fun getEudiToken(nonce: String): String {
         val presentationRequest = JSONObject().apply {
@@ -326,13 +372,13 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             put("request_uri_method", "get")
         }
 
-        Log.d("YeatStuff", "Body: $presentationRequest")
+        Log.d(TOON_MSG, "Body: $presentationRequest")
         val verifierData = eudiUtils.makeApiCall(
             url = "https://verifier-backend.eudiw.dev/ui/presentations",
             method = "POST",
             body = presentationRequest.toString()
         ) ?: throw Exception("Failed to create presentation request")
-        Log.d("YeatStuff", "Verifier data: $verifierData")
+        Log.d(TOON_MSG, "Verifier data: $verifierData")
 
         val transactionId = verifierData.getString("transaction_id")
         val clientId = verifierData.getString("client_id")

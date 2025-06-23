@@ -320,31 +320,6 @@ class TransactionRepository(
                 KEY_BALANCE to (BigInteger.valueOf(getMyBalance() - amount).toLong())
             )
 
-        // Add WebAuthn signature if available
-        /*
-        IPv8Android.getInstance().myPeer.identityProvider?.let { provider ->
-            // Create serialized transaction data to be signed
-            val transactionData = "$amount:${getMyBalance() - amount}".toByteArray()
-
-            // Sign transaction data with WebAuthn
-            val signature = runBlocking {
-                provider.sign(transactionData)
-            }
-
-            if (signature != null) {
-                // Add WebAuthn public key and signature to transaction
-                transaction[WebAuthnValidator.KEY_WEBAUTHN_PUBLIC_KEY] = provider.toHexString()
-                transaction[WebAuthnValidator.KEY_WEBAUTHN_SIGNATURE] = WebAuthnSignature(
-                    signature = signature,
-                    publicKey = provider.toHexString().toByteArray()
-                )
-                Log.d("WebAuthnTransaction", "Added WebAuthn signature to transaction")
-            } else {
-                Log.e("WebAuthnTransaction", "Failed to create WebAuthn signature")
-            }
-        }*/
-
-
         return trustChainCommunity.createProposalBlock(
             BLOCK_TYPE_TRANSFER,
             transaction,
@@ -596,6 +571,12 @@ class TransactionRepository(
     }
 
 
+    /**
+     * Returns the newest **_self-registration_** block stored in the local TrustChain.
+     *
+     * @return The most recent registration block created by _this_ node,
+     *         or `null` if the node has never registered.
+     */
     fun getSelfRegistrationBlock(): TrustChainBlock? {
         return trustChainHelper.getChainByUser(trustChainHelper.getMyPublicKey())
             .lastOrNull { block ->
@@ -603,6 +584,27 @@ class TransactionRepository(
             }
     }
 
+    /**
+     * Locates the *registration* block that introduced the peer identified by [userKey]
+     * to the TrustChain network.
+     *
+     * Resolution strategy:
+     * 1. **Local lookup** – scan the locally cached chain and return the newest block
+     *    whose type is `BLOCK_TYPE_REGISTER` *and* whose public-key matches [userKey].
+     * 2. **Peer crawl** – if the block is not found locally, iterate over every known
+     *    peer and issue a `sendCrawlRequest()` for the window
+     *    `seqNum ± 4` (inclusive). The first matching block returned by a peer is used.
+     *
+     * Because the method may need to await network responses it executes the crawl
+     * inside `runBlocking { … }`, making the entire call **blocking** on purpose—
+     * callers often need a synchronous answer during validation.
+     *
+     * @param userKey Public-key bytes of the user whose registration block is sought.
+     * @param seqNum  Sequence number around which the registration is expected; used
+     *                to narrow the crawl window (±4).
+     * @return        The discovered registration block, or `null` if none could be obtained
+     *                from the local cache *or* any reachable peer.
+     */
     fun getUserRegistrationBlock(
         userKey: ByteArray,
         seqNum: Long,

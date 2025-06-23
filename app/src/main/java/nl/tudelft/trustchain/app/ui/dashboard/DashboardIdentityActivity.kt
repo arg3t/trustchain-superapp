@@ -34,6 +34,12 @@ private const val TAG = "IdentityManager"
 
 private var selectedIdIdx = 0;
 
+/**
+ * Activity that lets the user **view, create, select and delete** identities stored on-device.
+ *
+ * The screen bridges the **Registration** (creating a WebAuthn credential and saving
+ * the resulting block) and **Verification** phases (selecting an identity and testing signatures).
+ */
 class DashboardIdentityActivity : AppCompatActivity() {
     private val binding by viewBinding(FragmentDashboardIdentityBinding::inflate)
 
@@ -64,7 +70,16 @@ class DashboardIdentityActivity : AppCompatActivity() {
         }
     }
 
-
+    /**
+     * Persists the current in-memory list of identities to the default
+     * {@link SharedPreferences} as a compact JSON array.
+     *
+     * Each element stores:
+     * * `name`               – user-friendly label
+     * * `privateKey`         – raw private-key bytes
+     * * `identityPublicKey`  – WebAuthn public key
+     * * `identityId`         – WebAuthn credential ID
+     */
     @OptIn(ExperimentalStdlibApi::class)
     private fun saveIdentities() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -80,7 +95,16 @@ class DashboardIdentityActivity : AppCompatActivity() {
         prefs.edit().putString(PREF_IDENTITIES, jsonArray.toString()).apply()
     }
 
-
+    /**
+     * Configures the **identity selector** (`Spinner`) that shows every stored identity.
+     *
+     * * Populates the adapter with the names of all identities.
+     * * Listens for user selection changes and, when they occur, updates the global
+     *   [TrustChainApplication] instance **and** the active IPv8 peer so that subsequent
+     *   on-chain operations are signed with the chosen identity.
+     * * Restores the spinner’s selection after configuration-changes by using
+     *   the cached index in `selectedIdIdx`.
+     */
     private fun setupIdentitySelector() {
         savedIdentitiesAdapter = ArrayAdapter(
             this,
@@ -116,6 +140,18 @@ class DashboardIdentityActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Wires the **“Save”** button that registers a brand-new identity:
+     *
+     * 1. Validates the entered name.
+     * 2. Generates a fresh EC key-pair locally.
+     * 3. Launches a WebAuthn **registration** ceremony via [registerWebAuthn].
+     * 4. Combines the local key and the returned credential into an [Identity],
+     *    persists it and refreshes the UI.
+     *
+     * Errors and status updates are surfaced through `Toast` messages; the long-running
+     * registration happens inside `lifecycleScope.launch { … }`.
+     */
     private fun setupSaveButton() {
         binding.saveIdBtn.setOnClickListener {
             val identityName = binding.newIdentityName.text.toString().trim()
@@ -143,6 +179,14 @@ class DashboardIdentityActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Adds a **diagnostic** button that signs a hardcoded string with the currently
+     * selected identity *and immediately verifies the result*.
+     *
+     * This is a quick smoke-test for the **Verification** step shown in the project diagram.
+     * The generated signature and its verification outcome are logged to *logcat* and
+     * displayed to the user via a `Toast`.
+     */
     @SuppressLint("ShowToast")
     private fun setupTestSignatureButton() {
         binding.testSignature.setOnClickListener {
@@ -181,6 +225,15 @@ class DashboardIdentityActivity : AppCompatActivity() {
     }
 
 
+    /**
+     * Wires the **“Delete”** button that removes the identity currently selected in the spinner.
+     *
+     * After deletion the method:
+     * * Calls [saveIdentities] to persist the updated list.
+     * * Refreshes the spinner adapter and, if any identities remain, selects a sensible default.
+     * * Re-initialises the IPv8 subsystem so that the application continues to operate with a
+     *   valid identity.
+     */
     private fun setupDeleteButton() {
         binding.clearIdentities.setOnClickListener {
             if (savedIdentities.isEmpty()) {
@@ -219,7 +272,12 @@ class DashboardIdentityActivity : AppCompatActivity() {
         }
     }
 
-
+    /**
+     * Completes the picker workflow: returns `RESULT_OK` to the caller and finishes the activity.
+     *
+     * The actual identity switch already happened in [setupIdentitySelector]; here we merely
+     * acknowledge the choice and close the screen.
+     */
     private fun setupSelectIdentityButton() {
         binding.selectIdentity.setOnClickListener {
             val selectedPosition = binding.currentIdentitySelector.selectedItemPosition
@@ -242,6 +300,14 @@ class DashboardIdentityActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Inserts a freshly created [identity] into the in-memory list and persists it.
+     *
+     * If this is the **first** identity ever created, it is automatically activated and the
+     * IPv8 stack is boot-strapped so the user can start transacting immediately.
+     *
+     * @param identity Newly minted identity returned from [setupSaveButton].
+     */
     private fun addNewIdentity(identity: Identity) {
         // Create and add the new identity
         savedIdentities.add(identity)
@@ -261,6 +327,22 @@ class DashboardIdentityActivity : AppCompatActivity() {
         savedIdentitiesAdapter.notifyDataSetChanged()
     }
 
+    /**
+     * Performs a WebAuthn **registration ceremony** using the Android *Credential Manager* API and
+     * converts the result into an [IdentityProviderOwner].
+     *
+     * Steps performed inside the coroutine:
+     * 1. Build a [CreatePublicKeyCredentialRequest] using [createRegistrationRequestJson].
+     * 2. Launch the platform-provided registration flow.
+     * 3. Extract the credential’s raw public key and ID from the response JSON.
+     * 4. Wrap them into a [WebAuthnIdentityProviderOwner].
+     *
+     * @param name Friendly display-name chosen by the user; incorporated into the RP data.
+     * @return The newly created credential wrapper, or **`null`** when the user cancels or an
+     *         error occurs.
+     *
+     * @throws Exception Propagates any unexpected failures coming from the credential APIs.
+     */
     @SuppressLint("PublicKeyCredential")
     suspend fun registerWebAuthn(name: String): IdentityProviderOwner? {
         try {
@@ -300,6 +382,16 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
     }
 
+    /**
+     * Builds the JSON payload expected by a WebAuthn
+     * [CreatePublicKeyCredentialRequest] **registration** call.
+     *
+     * A fresh 32-byte random challenge is generated for every invocation.
+     *
+     * @param name Display-name of the user (shown in authenticator UI).
+     * @param id   Randomly generated user-handle (base64url encoded).
+     * @return Minified JSON string suitable for the `requestJson` argument.
+     */
     private fun createRegistrationRequestJson(name: String, id: String): String {
         // Generate a random challenge
         val challenge = ByteArray(32).apply {
@@ -338,7 +430,11 @@ class DashboardIdentityActivity : AppCompatActivity() {
 
 
     /**
-     * Simple data class to represent an identity
+     * Simple value-object that groups everything required to represent an identity.
+     *
+     * @property name        Human-readable label shown in the UI.
+     * @property privateKey  EC private key that signs TrustChain/IPv8 blocks.
+     * @property identity    WebAuthn-backed identity provider whose public key ends up on-chain.
      */
     data class Identity(
         val name: String,
@@ -349,6 +445,16 @@ class DashboardIdentityActivity : AppCompatActivity() {
     companion object {
         private const val PREF_IDENTITIES = "identities_json"
 
+        /**
+         * Reads all identities previously stored by [saveIdentities] from
+         * {@link SharedPreferences} and deserialises them.
+         *
+         * Corrupt records are skipped but logged so that a single bad entry does not
+         * prevent the app from starting.
+         *
+         * @param context Any valid Android [Context].
+         * @return Immutable list of valid [Identity] objects.
+         */
         fun savedIdentities(context: Context): List<Identity> {
             val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
 

@@ -42,6 +42,31 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         )
     }
 
+    /**
+     * Parses fragment arguments, fetches the recipient’s trust artifacts and
+     * updates the banner according to the strongest **verified** evidence.
+     *
+     * High-level flow:
+     * 1. Extract *registrationBlockId*, *recipient public key*, *amount*,
+     *    *name* and the raw `IPSignature` attached to the transfer.
+     * 2. Obtain the on-chain **TrustScore** for the recipient.
+     * 3. Launch a coroutine that:
+     *    * Attempts to download the recipient’s **registration block** from
+     *      local cache or peers (±4 window).
+     *    * Builds a `WebAuthnIdentityProviderChecker` when the block exposes
+     *      the fields<br/>`signed_EUDI_token`, `nonce`, `webauthn_key`.
+     *    * Calls [EUDIUtils.verifyEudiToken]. If that **and** the on-chain
+     *      signature verify, the banner turns **blue** (“EUDI verified”).
+     *    * Otherwise falls back to TrustScore thresholds and paints the banner
+     *      green / gold / red.
+     *
+     * Colour codes come from `democracy_blue`, `android_green`,
+     * `metallic_gold` and `red` resources.
+     *
+     * @see transactionRepository.getUserRegistrationBlock
+     * @see transactionRepository.verifyTransactionSignature
+     * @see EUDIUtils.verifyEudiToken
+     */
     override fun onViewCreated(
         view: View,
         savedInstanceState: Bundle?
