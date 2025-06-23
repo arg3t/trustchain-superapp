@@ -120,6 +120,8 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         logger.info { "Trustscore: $trustScore" }
 
         lifecycleScope.launch {
+            binding.trustScoreWarning.text = getString(R.string.send_money_eudi_verifying)
+
             var checker: IdentityProviderChecker? = null
             var nonce: String? = null
             var tokenSig: IPSignature? = null;

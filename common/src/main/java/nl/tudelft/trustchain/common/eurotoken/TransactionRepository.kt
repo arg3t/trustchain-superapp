@@ -32,7 +32,9 @@ import java.math.BigInteger
 import nl.tudelft.trustchain.common.eurotoken.blocks.WebAuthnValidator
 import nl.tudelft.trustchain.common.eurotoken.webauthn.WebAuthnSignature
 import java.security.MessageDigest
+import kotlin.math.max
 import kotlin.text.toByteArray
+import kotlin.time.Duration.Companion.seconds
 
 class TransactionRepository(
     val trustChainCommunity: TrustChainCommunity,
@@ -601,7 +603,7 @@ class TransactionRepository(
             }
     }
 
-    suspend fun getUserRegistrationBlock(
+    fun getUserRegistrationBlock(
         userKey: ByteArray,
         seqNum: Long,
     ): TrustChainBlock? {
@@ -621,17 +623,18 @@ class TransactionRepository(
         Log.d("BlockFetching", peers.toString())
         Log.d("BlockFetching", "LMAO: ${peers.size}")
         for (peer in peers) {
-            Log.d("LOGO", "$peer")
-            val blocks = trustChainCommunity.sendCrawlRequest(
-                peer,
-                userKey,
-                LongRange(seqNum - 4, seqNum + 4),
-            )
+            Log.d("LOGO", "before")
+            val blocks = runBlocking {
+                trustChainCommunity.sendCrawlRequest(
+                    peer,
+                    userKey,
+                    LongRange(max(0, seqNum - 4), seqNum + 4)
+                )
+            }
             Log.d("LOGO", "after $peer")
 
-
-            val block = blocks.lastOrNull {
-                block -> block.type == BLOCK_TYPE_REGISTER && block.publicKey == userKey
+            val block = blocks.lastOrNull { block ->
+                block.type == BLOCK_TYPE_REGISTER && block.publicKey == userKey
             }
             Log.d("BlockFetching", "From peer: ${peer.address} | ${blocks} | ${block}")
             if (block != null) {

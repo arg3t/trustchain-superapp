@@ -3,7 +3,8 @@
     <string name="send_money_trustscore_warning_low">WARNING: The public key you are sending to has a low trust score (%d%%).</string>
     <string name="send_money_trustscore_warning_average">WARNING: The public key you are sending to has an average trust score (%d%%).</string>
     <string name="send_money_trustscore_warning_no_score">WARNING: No trust score available for the public key you are sending to.</string>
-    <string name="send_money_eudi_success">This person has verified been verified using passport grade identity. 🇪🇺</string>
+    <string name="send_money_eudi_success">This person has been verified using passport grade identity. 🇪🇺</string>
+    <string name="send_money_eudi_verifying">Verifying… 🤔</string>
     <string name="copy_pubkey">Copy PubKey</string>
     <string name="verify_balance">Verify Balance</string>
     <string name="change_name">Change name</string>
