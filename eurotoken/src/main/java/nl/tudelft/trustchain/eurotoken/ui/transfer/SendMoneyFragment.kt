@@ -49,8 +49,8 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         super.onViewCreated(view, savedInstanceState)
 
         val registrationBlockId = requireArguments()
-            .getString(ARG_REGISTRATION_BLOCK)
-            ?.takeIf { it.isNotBlank() }
+            .getLong(ARG_SEQ_NR)
+            .takeIf { it != 0L }
 
         val rawSignature = requireArguments()
             .getString(ARG_SIGNATURE)
@@ -120,6 +120,8 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         logger.info { "Trustscore: $trustScore" }
 
         lifecycleScope.launch {
+            binding.trustScoreWarning.text = getString(R.string.send_money_eudi_verifying)
+
             var checker: IdentityProviderChecker? = null
             var nonce: String? = null
             var tokenSig: IPSignature? = null;
@@ -230,7 +232,7 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         const val ARG_PUBLIC_KEY = "pubkey"
         const val ARG_NAME = "name"
         const val ARG_SIGNATURE = "signature"
-        const val ARG_REGISTRATION_BLOCK = "rb"
+        const val ARG_SEQ_NR = "seqNr"
         const val TRUSTSCORE_AVERAGE_BOUNDARY = 70
         const val TRUSTSCORE_LOW_BOUNDARY = 30
     }

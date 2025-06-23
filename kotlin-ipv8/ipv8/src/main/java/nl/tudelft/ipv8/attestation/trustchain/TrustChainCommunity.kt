@@ -298,7 +298,7 @@ open class TrustChainCommunity(
         // TODO: make sure to handle timeout properly and return at least partial crawl response
 
         blocks
-    }
+    };
 
     /*
      * Request deserialization

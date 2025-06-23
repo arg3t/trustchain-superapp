@@ -15,19 +15,14 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import nl.tudelft.ipv8.Peer
 import nl.tudelft.ipv8.attestation.trustchain.BlockListener
 import nl.tudelft.ipv8.attestation.trustchain.TrustChainBlock
-import nl.tudelft.ipv8.keyvault.IPSignature
-import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
-import nl.tudelft.ipv8.util.random
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.common.contacts.ContactStore
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
@@ -40,20 +35,12 @@ import nl.tudelft.trustchain.eurotoken.R
 import nl.tudelft.trustchain.eurotoken.community.EuroTokenCommunity
 import nl.tudelft.trustchain.eurotoken.databinding.FragmentTransferEuroBinding
 import nl.tudelft.trustchain.eurotoken.ui.EurotokenBaseFragment
-import okhttp3.FormBody
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.ethereum.geth.Nonce
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
-import kotlin.collections.get
-import kotlin.math.sign
 
 const val TOON_MSG = "ToonsStuff"
 const val EUROTOKEN_MSG = "EUROTOKEN"
@@ -199,7 +186,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                         connectionData.put("signature", encoder.encodeToString(ip.toJsonString().toByteArray()))
                     }
                     transactionRepository.getSelfRegistrationBlock()?.let { block ->
-                        connectionData.put("rb", block.blockId)
+                        connectionData.put("seqNr", block.sequenceNumber)
                     }
 
                     val args = Bundle()
@@ -401,7 +388,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                 args.putLong(SendMoneyFragment.ARG_AMOUNT, connectionData.amount)
                 args.putString(SendMoneyFragment.ARG_NAME, connectionData.name)
                 args.putString(SendMoneyFragment.ARG_SIGNATURE, connectionData.signature)
-                args.putString(SendMoneyFragment.ARG_REGISTRATION_BLOCK, connectionData.registrationBlock)
+                args.putLong(SendMoneyFragment.ARG_SEQ_NR, connectionData.registrationBlock)
 
                 // Try to send the addresses of the last X transactions to the peer we have just scanned.
                 try {
@@ -475,7 +462,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
             var amount = this.optLong("amount", -1L)
             var name = this.optString("name")
             var type = this.optString("type")
-            var registrationBlock = this.optString("rb")
+            var registrationBlock = this.optLong("seqNr")
             var signature = this.optString("signature")
         }
 
