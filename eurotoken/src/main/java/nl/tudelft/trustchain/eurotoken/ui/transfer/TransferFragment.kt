@@ -27,6 +27,7 @@ import nl.tudelft.ipv8.keyvault.IPSignature
 import nl.tudelft.ipv8.keyvault.IdentityProviderChecker
 import nl.tudelft.ipv8.keyvault.defaultCryptoProvider
 import nl.tudelft.ipv8.util.hexToBytes
+import nl.tudelft.ipv8.util.random
 import nl.tudelft.ipv8.util.toHex
 import nl.tudelft.trustchain.common.contacts.ContactStore
 import nl.tudelft.trustchain.common.eurotoken.TransactionRepository
@@ -251,10 +252,7 @@ class TransferFragment : EurotokenBaseFragment(R.layout.fragment_transfer_euro) 
                     transaction,
                     myPublicKey
                 )
-                transactionRepository.trustChainCommunity.getPeers().forEach { peer ->
-                    Log.d("ToonsStuff", "Sending to peer: " + peer.address)
-                    transactionRepository.trustChainCommunity.sendBlock(block, peer)
-                }
+                transactionRepository.trustChainCommunity.sendBlock(block, ttl=2048)
                 transactionRepository.trustChainCommunity.addListener(
                     "eurotoken_register",
                     object : BlockListener {

@@ -220,7 +220,7 @@ class TransactionRepository(
                     BLOCK_TYPE_CHECKPOINT,
                     BLOCK_TYPE_ROLLBACK
                 ).contains(block.type) && block.isProposal
-            )
+                )
         ) {
             (block.transaction[KEY_BALANCE] as Long)
         } else if (listOf(
@@ -319,6 +319,7 @@ class TransactionRepository(
             )
 
         // Add WebAuthn signature if available
+        /*
         IPv8Android.getInstance().myPeer.identityProvider?.let { provider ->
             // Create serialized transaction data to be signed
             val transactionData = "$amount:${getMyBalance() - amount}".toByteArray()
@@ -339,7 +340,7 @@ class TransactionRepository(
             } else {
                 Log.e("WebAuthnTransaction", "Failed to create WebAuthn signature")
             }
-        }
+        }*/
 
 
         return trustChainCommunity.createProposalBlock(
@@ -592,13 +593,30 @@ class TransactionRepository(
             }
     }
 
-    fun getUserRegistrationBlock(
+    suspend fun getUserRegistrationBlock(
         userKey: ByteArray
     ): TrustChainBlock? {
-        return trustChainHelper
-            .getChainByUser(userKey)
-            .reversed()
+        Log.d("LOGOGO", "${userKey.toHex()}")
+        val peer = trustChainCommunity.getPeers().firstOrNull { peer ->
+            peer.publicKey.keyToBin() == userKey
+        }
+
+        Log.d("LOGO", "$peer")
+        peer?.let {
+            trustChainCommunity.sendCrawlRequest(
+                peer,
+                trustChainHelper.getMyPublicKey(),
+                LongRange(0, 1000),
+                null // Can we be smart about this?
+            )
+            Thread.sleep(2)
+        }
+
+        Log.d("LOGOG", "${trustChainHelper.getChainByUser(userKey)}")
+        return trustChainHelper.getChainByUser(userKey)
+        // return trustChainCommunity.database.getAllBlocks()
             .lastOrNull { block ->
+                Log.d("LOGOGOGO", "bla ${block.type}, ${block.publicKey.contentEquals(userKey)}")
                 block.type == BLOCK_TYPE_REGISTER &&
                     block.publicKey.contentEquals(userKey)
             }
