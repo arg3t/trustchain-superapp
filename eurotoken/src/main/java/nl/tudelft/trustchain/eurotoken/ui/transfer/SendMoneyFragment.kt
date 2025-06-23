@@ -48,6 +48,10 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
     ) {
         super.onViewCreated(view, savedInstanceState)
 
+        val registrationBlockId = requireArguments()
+            .getString(ARG_REGISTRATION_BLOCK)
+            ?.takeIf { it.isNotBlank() }
+
         val rawSignature = requireArguments()
             .getString(ARG_SIGNATURE)
             ?.takeIf { it.isNotBlank() }
@@ -116,30 +120,38 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         logger.info { "Trustscore: $trustScore" }
 
         lifecycleScope.launch {
-            val registrationBlock = transactionRepository.getUserRegistrationBlock(publicKey.hexToBytes())?.transaction
-
             var checker: IdentityProviderChecker? = null
             var nonce: String? = null
-            var tokenSig: IPSignature? = null
+            var tokenSig: IPSignature? = null;
 
-            if (registrationBlock != null) {
-                registrationBlock["signed_EUDI_token"]?.let { it ->
-                    tokenSig = IPSignature.fromJsonString(it.toString())
-                }
-                registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
-                registrationBlock["webauthn_key"]?.let { it ->
-                    checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
+            if (registrationBlockId != null) {
+                val registrationBlock =
+                    transactionRepository.getUserRegistrationBlock(
+                        publicKey.hexToBytes(),
+                        registrationBlockId
+                    )?.transaction
+
+                if (registrationBlock != null) {
+                    registrationBlock["signed_EUDI_token"]?.let { it ->
+                        tokenSig = IPSignature.fromJsonString(it.toString())
+                    }
+                    registrationBlock["nonce"]?.let { it -> nonce = it.toString() }
+                    registrationBlock["webauthn_key"]?.let { it ->
+                        checker = WebAuthnIdentityProviderChecker("yeat", it.toString().hexToBytes())
+                    }
+                } else {
+                    Toast.makeText(context, "Could not find registration block in any peer!", Toast.LENGTH_LONG).show()
                 }
             }
 
-            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker, tokenSig, nonce)) {
+            if (checker != null && nonce != null && tokenSig != null && eudiUtils.verifyEudiToken(checker!!, tokenSig, nonce)) {
                 signature?.let{
                     if(transactionRepository.verifyTransactionSignature(
                             publicKey,
                             name,
                             amount,
                             signature,
-                            checker,
+                            checker!!,
                         )) {
                         binding.trustScoreWarning.text =
                             getString(R.string.send_money_eudi_success)
@@ -218,6 +230,7 @@ class SendMoneyFragment : EurotokenBaseFragment(R.layout.fragment_send_money) {
         const val ARG_PUBLIC_KEY = "pubkey"
         const val ARG_NAME = "name"
         const val ARG_SIGNATURE = "signature"
+        const val ARG_REGISTRATION_BLOCK = "rb"
         const val TRUSTSCORE_AVERAGE_BOUNDARY = 70
         const val TRUSTSCORE_LOW_BOUNDARY = 30
     }

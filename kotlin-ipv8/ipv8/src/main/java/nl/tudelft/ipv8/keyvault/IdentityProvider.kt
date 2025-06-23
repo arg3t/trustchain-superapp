@@ -45,7 +45,7 @@ data class IPSignature(
             val decoder = Base64.getDecoder()
             val json = JSONObject(jsonString)
             return IPSignature(
-                data = decoder.decode(json.getString("challenge")),
+                data = decoder.decode(json.getString("data")),
                 challenge = decoder.decode(json.getString("challenge")),
                 authenticatorData = decoder.decode(json.getString("authenticatorData")),
                 signature = decoder.decode(json.getString("IPsignature"))

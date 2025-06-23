@@ -593,33 +593,51 @@ class TransactionRepository(
             }
     }
 
+
+    fun getSelfRegistrationBlock(): TrustChainBlock? {
+        return trustChainHelper.getChainByUser(trustChainHelper.getMyPublicKey())
+            .lastOrNull { block ->
+                block.type == BLOCK_TYPE_REGISTER
+            }
+    }
+
     suspend fun getUserRegistrationBlock(
-        userKey: ByteArray
+        userKey: ByteArray,
+        blockId: String
     ): TrustChainBlock? {
         Log.d("LOGOGO", "${userKey.toHex()}")
-        val peer = trustChainCommunity.getPeers().firstOrNull { peer ->
-            peer.publicKey.keyToBin() == userKey
-        }
-
-        Log.d("LOGO", "$peer")
-        peer?.let {
-            trustChainCommunity.sendCrawlRequest(
-                peer,
-                trustChainHelper.getMyPublicKey(),
-                LongRange(0, 1000),
-                null // Can we be smart about this?
-            )
-            Thread.sleep(2)
-        }
-
-        Log.d("LOGOG", "${trustChainHelper.getChainByUser(userKey)}")
-        return trustChainHelper.getChainByUser(userKey)
-        // return trustChainCommunity.database.getAllBlocks()
+        var registrationBlock = trustChainHelper.getChainByUser(userKey)
             .lastOrNull { block ->
                 Log.d("LOGOGOGO", "bla ${block.type}, ${block.publicKey.contentEquals(userKey)}")
                 block.type == BLOCK_TYPE_REGISTER &&
                     block.publicKey.contentEquals(userKey)
             }
+
+        if (registrationBlock != null) {
+            return registrationBlock
+        }
+        val peers = trustChainCommunity.getPeers()
+        Log.d("BlockFetching", peers.toString())
+        Log.d("BlockFetching", "LMAO: ${peers.size}")
+        for (peer in peers) {
+            Log.d("LOGO", "$peer")
+            val blocks = trustChainCommunity.sendCrawlRequest(
+                peer,
+                userKey,
+                LongRange(0, 42),
+            )
+            Log.d("LOGO", "after $peer")
+
+
+            val block = blocks.firstOrNull {
+                block -> block.blockId == blockId
+            }
+            Log.d("BlockFetching", "From peer: ${peer.address} | ${blocks}")
+            if (block != null) {
+                return block
+            }
+        }
+        return null;
     }
 
     fun getLatestBlockOfType(
