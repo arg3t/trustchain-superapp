@@ -603,10 +603,11 @@ class TransactionRepository(
 
     suspend fun getUserRegistrationBlock(
         userKey: ByteArray,
-        blockId: String
+        seqNum: Long,
     ): TrustChainBlock? {
         Log.d("LOGOGO", "${userKey.toHex()}")
         var registrationBlock = trustChainHelper.getChainByUser(userKey)
+            .reversed()
             .lastOrNull { block ->
                 Log.d("LOGOGOGO", "bla ${block.type}, ${block.publicKey.contentEquals(userKey)}")
                 block.type == BLOCK_TYPE_REGISTER &&
@@ -624,15 +625,15 @@ class TransactionRepository(
             val blocks = trustChainCommunity.sendCrawlRequest(
                 peer,
                 userKey,
-                LongRange(0, 42),
+                LongRange(seqNum - 4, seqNum + 4),
             )
             Log.d("LOGO", "after $peer")
 
 
-            val block = blocks.firstOrNull {
-                block -> block.blockId == blockId
+            val block = blocks.lastOrNull {
+                block -> block.type == BLOCK_TYPE_REGISTER && block.publicKey == userKey
             }
-            Log.d("BlockFetching", "From peer: ${peer.address} | ${blocks}")
+            Log.d("BlockFetching", "From peer: ${peer.address} | ${blocks} | ${block}")
             if (block != null) {
                 return block
             }
